@@ -4,7 +4,22 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Extract clean daily memory logs from OpenClaw JSONL sessions')
+    parser = argparse.ArgumentParser(
+        description='Extract clean daily memory logs from OpenClaw JSONL sessions',
+        epilog='''\
+Examples:
+  # Extract a single day
+  python extract_v10.py --day 2026-09-12
+
+  # Extract a date range
+  python extract_v10.py --from 2026-09-10 --to 2026-09-12
+
+  # Extract all days (default)
+  python extract_v10.py
+
+  # Custom sessions directory and output
+  python extract_v10.py --day 2026-09-12 --sessions-dir /path/to/sessions --output ./my_logs''',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--day', type=str, help='Extract a specific day (YYYY-MM-DD)')
     parser.add_argument('--from', dest='from_date', type=str, help='Start date (YYYY-MM-DD)')
     parser.add_argument('--to', dest='to_date', type=str, help='End date (YYYY-MM-DD)')
