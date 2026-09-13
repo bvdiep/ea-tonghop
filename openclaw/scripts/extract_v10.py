@@ -156,12 +156,8 @@ def is_phantom_greeting(text):
 
 def extract_messages_from_file(filepath):
     results = []
-    is_trajectory = ".trajectory." in filepath
-    is_checkpoint = ".checkpoint." in filepath
-    
-    # SKIP 12: Skip checkpoint files entirely
-    if is_checkpoint:
-        return results
+    is_trajectory = '.trajectory.' in filepath
+    # Note: checkpoint files are now included; dedup handles duplicates
     
     with open(filepath, "r", errors="replace") as fh:
         lines = fh.readlines()
@@ -217,12 +213,9 @@ def extract_messages_from_file(filepath):
                     trajectory_user_count += 1
                     has_trajectory_msgs = True
     
-    # SKIP 11: Remove sessions with 0 user messages (only for non-trajectory files)
-    if user_msg_count == 0 and not has_trajectory_msgs:
-        return results
-    
-    # For trajectory files: if no message-type AND no trajectory content, skip
-    if user_msg_count == 0 and not has_trajectory_msgs:
+    # SKIP 11: Remove sessions with 0 messages total (empty/noise sessions)
+    # Keep sessions with only assistant messages (cron morning greetings, etc.)
+    if user_msg_count == 0 and assistant_msg_count == 0 and not has_trajectory_msgs:
         return results
     
     # Session-level filtering
@@ -342,19 +335,14 @@ def extract_messages_from_file(filepath):
 # Scan all files
 sessions_dir = '/home/diep/.openclaw/agents/assistant/sessions'
 all_files = []
-skipped_checkpoint = 0
 for fn in os.listdir(sessions_dir):
     fp = os.path.join(sessions_dir, fn)
     if not os.path.isfile(fp):
         continue
     if fn.endswith('.jsonl') or fn.endswith('.trajectory.jsonl') or '.jsonl.reset.' in fn:
-        if '.checkpoint.' in fn:
-            skipped_checkpoint += 1
-            continue
         all_files.append(fp)
 
-print(f"Total files to scan: {len(all_files)}")
-print(f"Skipped checkpoint files: {skipped_checkpoint}")
+print(f'Total files to scan: {len(all_files)}')
 
 all_messages = []
 for i, fp in enumerate(sorted(all_files)):
