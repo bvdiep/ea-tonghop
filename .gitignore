@@ -9,3 +9,7 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+
+# Generated output (large files)
+openclaw/output_v10/
+openclaw/output_v10_html/
