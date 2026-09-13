@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
-import json, os, hashlib, re
+import json, os, hashlib, re, argparse
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Extract clean daily memory logs from OpenClaw JSONL sessions')
+    parser.add_argument('--day', type=str, help='Extract a specific day (YYYY-MM-DD)')
+    parser.add_argument('--from', dest='from_date', type=str, help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--to', dest='to_date', type=str, help='End date (YYYY-MM-DD)')
+    parser.add_argument('--sessions-dir', type=str, default='/home/diep/.openclaw/agents/assistant/sessions',
+                        help='Path to sessions directory (default: ~/.openclaw/agents/assistant/sessions)')
+    parser.add_argument('--output', type=str, default=None,
+                        help='Output directory (default: ./test_logs_v10 or ./test_logs_v10_<day>)')
+    return parser.parse_args()
+
+args = parse_args()
 
 tz7 = timezone(timedelta(hours=7))
 
@@ -333,7 +346,7 @@ def extract_messages_from_file(filepath):
     return results
 
 # Scan all files
-sessions_dir = '/home/diep/.openclaw/agents/assistant/sessions'
+sessions_dir = args.sessions_dir
 all_files = []
 for fn in os.listdir(sessions_dir):
     fp = os.path.join(sessions_dir, fn)
@@ -372,10 +385,26 @@ for ts_ms, role, text in unique:
     else:
         continue
     day = dt.strftime("%Y-%m-%d")
+    
+    # Date filtering
+    if args.day:
+        if day != args.day:
+            continue
+    else:
+        if args.from_date and day < args.from_date:
+            continue
+        if args.to_date and day > args.to_date:
+            continue
+    
     by_day[day].append((dt, role, text))
 
-# Output
-out_dir = "/home/diep/.openclaw/agents/assistant/.tmp/recovery_memory_v3/test_logs_v10"
+# Determine output directory
+if args.output:
+    out_dir = args.output
+elif args.day:
+    out_dir = f"./test_logs_v10_{args.day.replace('-', '')}"
+else:
+    out_dir = "./test_logs_v10"
 os.makedirs(out_dir, exist_ok=True)
 
 total_turns = 0
