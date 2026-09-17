@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini-DMS — Document Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       BSM SUPERPOWER DESIGN TOKENS (from design-system.md)
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+      --palette-orange-400: #F68C3D;
+      --palette-orange-500: #F26531;
+      --palette-orange-600: #D4541F;
+      --palette-orange-700: #A83F12;
+      --palette-white:      #FFFFFF;
+      --palette-cream-50:   #F1F2F2;
+      --palette-gray-200:   #E0E0E0;
+      --palette-gray-300:   #C8C9CA;
+      --palette-gray-400:   #A7A9AC;
+      --palette-gray-500:   #6D6E71;
+      --palette-gray-600:   #4A4B4D;
+      --palette-gray-700:   #2F2F31;
+      --palette-gray-800:   #231F20;
+      --palette-gray-900:   #1D1C1C;
+      --palette-black:      #000000;
+      --palette-blue-100:   #DBEAFE;
+      --palette-blue-600:   #2563EB;
+      --palette-blue-700:   #1D4ED8;
+      --palette-green-100:  #DCFCE7;
+      --palette-green-600:  #16A34A;
+      --palette-purple-100: #F3E8FF;
+      --palette-purple-600: #9333EA;
+      --palette-red-100:    #FEE2E2;
+      --palette-red-600:    #DC2626;
+      --palette-red-700:    #B91C1C;
+      --palette-yellow-100: #FEF9C3;
+      --palette-yellow-500: #CA8A04;
+
+      --color-primary:            var(--palette-orange-500);
+      --color-primary-hover:      var(--palette-orange-600);
+      --color-primary-active:     var(--palette-orange-700);
+      --color-primary-text:       var(--palette-orange-700);
+      --color-primary-fg:         var(--palette-gray-900);
+      --color-primary-subtle:     #FFF3EC;
+      --color-bg:                 var(--palette-white);
+      --color-surface:            var(--palette-cream-50);
+      --color-surface-raised:     var(--palette-white);
+      --color-surface-overlay:    rgba(0, 0, 0, 0.4);
+      --color-border:             var(--palette-gray-300);
+      --color-border-strong:      var(--palette-gray-400);
+      --color-border-focus:       var(--palette-orange-500);
+      --color-text-primary:       var(--palette-gray-900);
+      --color-text-secondary:     var(--palette-gray-800);
+      --color-text-tertiary:      var(--palette-gray-500);
+      --color-text-disabled:      var(--palette-gray-400);
+      --color-text-inverse:       var(--palette-white);
+      --color-text-link:          var(--color-primary-text);
+      --color-sidebar-bg:         var(--palette-gray-900);
+      --color-sidebar-border:     var(--palette-gray-700);
+      --color-sidebar-text:       var(--palette-cream-50);
+      --color-sidebar-text-muted: var(--palette-gray-400);
+      --color-sidebar-active-bg:  var(--palette-gray-700);
+      --color-sidebar-hover-bg:   var(--palette-gray-800);
+      --color-status-todo-bg:     var(--palette-yellow-100);
+      --color-status-todo-text:   #854D0E;
+      --color-status-doing-bg:    var(--palette-blue-100);
+      --color-status-doing-text:  var(--palette-blue-700);
+      --color-status-review-bg:   var(--palette-purple-100);
+      --color-status-review-text: #7E22CE;
+      --color-status-blocked-bg:  var(--palette-red-100);
+      --color-status-blocked-text: var(--palette-red-700);
+      --color-status-done-bg:     var(--palette-green-100);
+      --color-status-done-text:   #15803D;
+      --color-danger:             var(--palette-red-700);
+      --color-danger-bg:          var(--palette-red-100);
+      --color-focus-ring:         var(--palette-orange-500);
+      --color-focus-ring-offset:  var(--palette-white);
+
+      --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+      --sidebar-width:          48px;
+      --sidebar-width-expanded: 240px;
+      --topbar-height:          44px;
+
+      --radius-sm:    4px;
+      --radius-md:    6px;
+      --radius-lg:    8px;
+      --radius-xl:    12px;
+      --radius-2xl:   16px;
+      --radius-full:  9999px;
+
+      --shadow-sm:   0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-base: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+      --shadow-md:   0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+
+      --z-base:     1;
+      --z-dropdown: 10;
+      --z-sticky:   20;
+      --z-modal:    50;
+      --z-toast:    100;
+
+      --duration-instant: 100ms;
+      --duration-fast:    160ms;
+      --duration-base:    240ms;
+      --duration-slow:    360ms;
+      --ease-standard:    cubic-bezier(0.2, 0, 0, 1);
+      --ease-emphasized:  cubic-bezier(0.3, 0, 0, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--color-text-primary);
+      background: var(--color-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+    input, textarea { font-family: inherit; font-size: inherit; }
+    a { color: inherit; text-decoration: none; }
+    ul { list-style: none; }
+    img { display: block; max-width: 100%; }
+
+    :focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       LAYOUT
+       ═══════════════════════════════════════════════════════════════ */
+    .app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── SIDEBAR ─────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-width-expanded);
+      background: var(--color-sidebar-bg);
+      border-right: 1px solid var(--color-sidebar-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width var(--duration-base) var(--ease-standard);
+    }
+    .sidebar-brand {
+      height: var(--topbar-height);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--color-sidebar-border);
+    }
+    .sidebar-brand-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-md);
+      background: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-primary-fg);
+      font-weight: 700;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .sidebar-brand-text {
+      color: var(--color-sidebar-text);
+      font-weight: 600;
+      font-size: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+    .sidebar-section {
+      margin-bottom: 16px;
+    }
+    .sidebar-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-sidebar-text-muted);
+      padding: 8px 8px 4px;
+    }
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 36px;
+      padding: 0 10px;
+      border-radius: var(--radius-md);
+      color: var(--color-sidebar-text);
+      font-size: 13px;
+      font-weight: 500;
+      transition: background var(--duration-fast) var(--ease-standard);
+      cursor: pointer;
+    }
+    .sidebar-item:hover {
+      background: var(--color-sidebar-hover-bg);
+    }
+    .sidebar-item.is-active {
+      background: var(--color-sidebar-active-bg);
+      color: var(--color-primary);
+    }
+    .sidebar-item svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+    .sidebar-item-badge {
+      margin-left: auto;
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      min-width: 20px;
+      text-align: center;
+    }
+    .sidebar-footer {
+      border-top: 1px solid var(--color-sidebar-border);
+      padding: 12px;
+    }
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sidebar-user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-primary-fg);
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .sidebar-user-info {
+      overflow: hidden;
+    }
+    .sidebar-user-name {
+      color: var(--color-sidebar-text);
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-user-role {
+      color: var(--color-sidebar-text-muted);
+      font-size: 11px;
+    }
+
+    /* ─── MAIN CONTENT ────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .topbar {
+      height: var(--topbar-height);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      background: var(--color-bg);
+      flex-shrink: 0;
+    }
+    .topbar-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+    .topbar-breadcrumb-current {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+    .topbar-search {
+      flex: 1;
+      max-width: 400px;
+      position: relative;
+    }
+    .topbar-search input {
+      width: 100%;
+      height: 32px;
+      padding: 0 12px 0 36px;
+      border: 1px solid #6D6E71;
+      border-radius: var(--radius-lg);
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+      font-size: 13px;
+    }
+    .topbar-search input::placeholder {
+      color: var(--color-text-tertiary);
+    }
+    .topbar-search input:focus {
+      outline: none;
+      border-color: var(--color-border-focus);
+      box-shadow: 0 0 0 2px rgba(246, 140, 61, 0.2);
+    }
+    .topbar-search svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--color-text-tertiary);
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .content {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .file-browser {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .file-browser-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .file-browser-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .file-browser-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ─── FILE GRID ───────────────────────────────────────────── */
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .file-card {
+      position: relative;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color var(--duration-fast) var(--ease-standard),
+                  box-shadow var(--duration-fast) var(--ease-standard);
+    }
+    .file-card:hover {
+      border-color: var(--color-border-strong);
+      box-shadow: var(--shadow-base);
+    }
+    .file-card.is-selected {
+      border-color: var(--color-primary);
+      background: var(--color-primary-subtle);
+    }
+    .file-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .file-card-icon.pdf { background: var(--palette-red-100); color: var(--palette-red-700); }
+    .file-card-icon.doc { background: var(--palette-blue-100); color: var(--palette-blue-700); }
+    .file-card-icon.img { background: var(--palette-green-100); color: #15803D; }
+    .file-card-icon.xls { background: #DCFCE7; color: #166534; }
+    .file-card-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .file-card-meta {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+    }
+    .file-card-check {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--color-border-strong);
+      background: var(--color-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity var(--duration-fast) var(--ease-standard);
+    }
+    .file-card:hover .file-card-check,
+    .file-card.is-selected .file-card-check {
+      opacity: 1;
+    }
+    .file-card.is-selected .file-card-check {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+    .file-card.is-selected .file-card-check::after {
+      content: '';
+      width: 10px;
+      height: 6px;
+      border-left: 2px solid var(--color-primary-fg);
+      border-bottom: 2px solid var(--color-primary-fg);
+      transform: rotate(-45deg) translate(1px, -1px);
+    }
+
+    /* ─── PREVIEW PANEL ───────────────────────────────────────── */
+    .preview-panel {
+      width: 360px;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-surface);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .preview-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .preview-header-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .preview-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .preview-thumb {
+      width: 100%;
+      aspect-ratio: 3/4;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .preview-thumb svg {
+      width: 64px;
+      height: 64px;
+      color: var(--palette-gray-300);
+    }
+    .preview-detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 13px;
+    }
+    .preview-detail-label {
+      color: var(--color-text-tertiary);
+    }
+    .preview-detail-value {
+      color: var(--color-text-primary);
+      font-weight: 500;
+    }
+    .preview-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: var(--radius-full);
+      background: var(--palette-gray-200);
+      color: var(--color-text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .tag.orange {
+      background: var(--color-primary-subtle);
+      color: var(--color-primary-text);
+    }
+
+    /* ─── BUTTONS ─────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      transition: all var(--duration-fast) var(--ease-standard);
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-hover);
+    }
+    .btn-primary:active {
+      background: var(--color-primary-active);
+      transform: scale(0.97);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+    }
+    .btn-secondary:hover {
+      background: var(--color-surface);
+      border-color: var(--color-text-tertiary);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--color-text-secondary);
+    }
+    .btn-ghost:hover {
+      background: var(--palette-gray-200);
+    }
+    .btn-lg {
+      height: 40px;
+      padding: 0 16px;
+      font-size: 14px;
+    }
+    .btn-sm {
+      height: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    /* ─── BADGES / STATUS CHIPS ───────────────────────────────── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .status-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: var(--radius-full);
+    }
+    .status-draft { background: var(--palette-yellow-100); color: #854D0E; }
+    .status-draft .dot { background: var(--palette-yellow-500); }
+    .status-review { background: var(--palette-purple-100); color: #7E22CE; }
+    .status-review .dot { background: var(--palette-purple-600); }
+    .status-approved { background: var(--palette-green-100); color: #15803D; }
+    .status-approved .dot { background: var(--palette-green-600); }
+    .status-rejected { background: var(--palette-red-100); color: var(--palette-red-700); }
+    .status-rejected .dot { background: var(--palette-red-600); }
+
+    /* ─── AI ASSISTANT PANEL ──────────────────────────────────── */
+    .ai-panel {
+      width: 340px;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-bg);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .ai-panel-header {
+      height: var(--topbar-height);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+    }
+    .ai-panel-header-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--color-primary), var(--palette-orange-400));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ai-panel-header-icon svg {
+      width: 16px;
+      height: 16px;
+      color: white;
+    }
+    .ai-panel-header-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .ai-panel-header-subtitle {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+    }
+    .ai-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .ai-msg {
+      display: flex;
+      gap: 8px;
+    }
+    .ai-msg-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-full);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .ai-msg-avatar.bot {
+      background: linear-gradient(135deg, var(--color-primary), var(--palette-orange-400));
+      color: white;
+    }
+    .ai-msg-avatar.user {
+      background: var(--palette-gray-200);
+      color: var(--color-text-primary);
+    }
+    .ai-msg-content {
+      flex: 1;
+    }
+    .ai-msg-bubble {
+      padding: 10px 12px;
+      border-radius: var(--radius-xl);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .ai-msg.bot .ai-msg-bubble {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-top-left-radius: 4px;
+    }
+    .ai-msg.user .ai-msg-bubble {
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+      border-top-right-radius: 4px;
+    }
+    .ai-msg-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .ai-msg-suggestion {
+      height: 26px;
+      padding: 0 10px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg);
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      transition: all var(--duration-fast) var(--ease-standard);
+    }
+    .ai-msg-suggestion:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary-text);
+      background: var(--color-primary-subtle);
+    }
+    .ai-input-area {
+      border-top: 1px solid var(--color-border);
+      padding: 12px;
+    }
+    .ai-input-box {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-xl);
+      padding: 8px 8px 8px 14px;
+      transition: border-color var(--duration-fast) var(--ease-standard);
+    }
+    .ai-input-box:focus-within {
+      border-color: var(--color-border-focus);
+      box-shadow: 0 0 0 2px rgba(246, 140, 61, 0.15);
+    }
+    .ai-input-box textarea {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-size: 13px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      min-height: 20px;
+      max-height: 120px;
+    }
+    .ai-input-box textarea::placeholder {
+      color: var(--color-text-tertiary);
+    }
+    .ai-input-send {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .ai-input-send:hover {
+      background: var(--color-primary-hover);
+    }
+
+    /* ─── MODAL ───────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--color-surface-overlay);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: var(--z-modal);
+    }
+    .modal {
+      width: 480px;
+      background: var(--color-surface-raised);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .modal-close {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-md);
+      color: var(--color-text-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-close:hover {
+      background: var(--palette-gray-200);
+      color: var(--color-text-primary);
+    }
+    .modal-body {
+      padding: 20px;
+    }
+    .upload-zone {
+      border: 2px dashed var(--color-border-strong);
+      border-radius: var(--radius-xl);
+      padding: 32px 20px;
+      text-align: center;
+      transition: border-color var(--duration-fast) var(--ease-standard);
+    }
+    .upload-zone:hover {
+      border-color: var(--color-primary);
+    }
+    .upload-zone-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary-subtle);
+      color: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px;
+    }
+    .upload-zone-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .upload-zone-hint {
+      font-size: 13px;
+      color: var(--color-text-tertiary);
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* ─── SCROLLBAR ───────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--palette-gray-300);
+      border-radius: var(--radius-full);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--palette-gray-400); }
+
+    /* ─── ACTIVITY FEED ───────────────────────────────────────── */
+    .activity-item {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .activity-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-full);
+      background: var(--palette-gray-200);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+    }
+    .activity-content {
+      flex: 1;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .activity-user {
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+    .activity-time {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      margin-top: 2px;
+    }
+
+    /* ─── TOAST ───────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: var(--z-toast);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--color-surface-raised);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      font-size: 13px;
+      animation: toastIn var(--duration-base) var(--ease-out);
+    }
+    .toast-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-full);
+      background: var(--palette-green-100);
+      color: #15803D;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── TABS (within content) ───────────────────────────────── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--color-border);
+      padding: 0 16px;
+    }
+    .tab {
+      height: 40px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-tertiary);
+      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab.is-active {
+      color: var(--color-primary-text);
+      border-bottom-color: var(--color-primary);
+    }
+
+    /* ─── COMMENT THREAD ──────────────────────────────────────── */
+    .comment {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .comment-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .comment-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-full);
+      background: var(--palette-gray-200);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+    .comment-author {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .comment-time {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      margin-left: auto;
+    }
+    .comment-body {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-left: 32px;
+    }
+    .comment-reply {
+      margin-left: 32px;
+      margin-top: 8px;
+      padding-left: 12px;
+      border-left: 2px solid var(--color-border);
+    }
+
+    /* ─── RESPONSIVE ──────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .preview-panel { display: none; }
+      .ai-panel { width: 300px; }
+    }
+    @media (max-width: 768px) {
+      .sidebar { width: var(--sidebar-width); }
+      .sidebar-brand-text, .sidebar-section-title, .sidebar-item span, .sidebar-item-badge, .sidebar-user-info { display: none; }
+      .sidebar-item { justify-content: center; }
+      .ai-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Skip navigation -->
+<a href="#main-content" style="position:absolute;top:-9999px;left:4px;z-index:9999;background:#fff;padding:8px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)" onfocus="this.style.top='16px'" onblur="this.style.top='-9999px'">
+  Skip to main content
+</a>
+
+<div class="app">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SIDEBAR — F2: Workspace & folder permissions
+       ═══════════════════════════════════════════════════════════ -->
+  <nav class="sidebar" aria-label="Main navigation">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">D</div>
+      <span class="sidebar-brand-text">Mini-DMS</span>
+    </div>
+
+    <div class="sidebar-nav">
+      <!-- Workspace selector -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Workspace</div>
+        <ul role="list">
+          <li>
+            <button class="sidebar-item is-active" aria-current="page" aria-label="Tài liệu workspace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>Tài liệu</span>
+              <span class="sidebar-item-badge">24</span>
+            </button>
+          </li>
+          <li>
+            <button class="sidebar-item" aria-label="Tìm kiếm (F6)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <span>Tìm kiếm</span>
+            </button>
+          </li>
+          <li>
+            <button class="sidebar-item" aria-label="Chia sẻ (F4)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              <span>Chia sẻ</span>
+            </button>
+          </li>
+          <li>
+            <button class="sidebar-item" aria-label="Yêu thích">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <span>Yêu thích</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Folders / categories -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Thư mục</div>
+        <ul role="list">
+          <li><button class="sidebar-item" aria-label="Hợp đồng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Hợp đồng</span></button></li>
+          <li><button class="sidebar-item" aria-label="Báo cáo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg><span>Báo cáo</span></button></li>
+          <li><button class="sidebar-item" aria-label="Biểu mẫu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><span>Biểu mẫu</span></button></li>
+          <li><button class="sidebar-item" aria-label="Hình ảnh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Hình ảnh</span></button></li>
+        </ul>
+      </div>
+
+      <!-- System -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Hệ thống</div>
+        <ul role="list">
+          <li><button class="sidebar-item" aria-label="Thùng rác"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Thùng rác</span></button></li>
+          <li><button class="sidebar-item" aria-label="Audit log (F9)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Audit log</span></button></li>
+          <li><button class="sidebar-item" aria-label="Cài đặt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Cài đặt</span></button></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- F1: Identity — SSO với SPP -->
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar">NV</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name">Nguyễn Văn A</div>
+          <div class="sidebar-user-role">Quản trị viên</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MAIN
+       ═══════════════════════════════════════════════════════════ -->
+  <main class="main" id="main-content">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <nav class="topbar-breadcrumb" aria-label="Breadcrumb">
+        <span>Tài liệu</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="topbar-breadcrumb-current">Hợp đồng</span>
+      </nav>
+      <!-- F6: Tìm kiếm -->
+      <div class="topbar-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Tìm theo tên, tag, metadata... (Ctrl+K)" aria-label="Tìm kiếm tài liệu" />
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" aria-label="Thông báo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('uploadModal').style.display='flex'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Tải lên
+        </button>
+      </div>
+    </header>
+
+    <!-- Tabs: F7 Comments / F8 Versions / Activity -->
+    <div class="tabs" role="tablist">
+      <button class="tab is-active" role="tab" aria-selected="true">Tài liệu</button>
+      <button class="tab" role="tab" aria-selected="false">Bình luận (F7)</button>
+      <button class="tab" role="tab" aria-selected="false">Phiên bản (F8)</button>
+      <button class="tab" role="tab" aria-selected="false">Audit log (F9)</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- File Browser -->
+      <section class="file-browser" aria-label="File browser">
+        <div class="file-browser-header">
+          <h1 class="file-browser-title">Hợp đồng</h1>
+          <div class="file-browser-actions">
+            <button class="btn btn-ghost btn-sm" aria-label="Lọc">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Lọc
+            </button>
+            <button class="btn btn-ghost btn-sm" aria-label="Xem danh sách">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-sm" aria-label="Sắp xếp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="19" y1="12" x2="5" y2="12"/></svg>
+              Sắp xếp
+            </button>
+          </div>
+        </div>
+
+        <!-- F2: File grid with visibility indicators -->
+        <div class="file-grid" role="list">
+
+          <article class="file-card is-selected" role="listitem" tabindex="0" aria-label="Hợp đồng mua bán hàng hóa 2026.pdf — Public">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon pdf">PDF</div>
+            <div class="file-card-name">Hợp đồng mua bán hàng hóa 2026.pdf</div>
+            <div class="file-card-meta">2.4 MB · 15/09/2026 · Public</div>
+          </article>
+
+          <article class="file-card" role="listitem" tabindex="0" aria-label="Hợp đồng dịch vụ IT.docx — Team">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon doc">DOC</div>
+            <div class="file-card-name">Hợp đồng dịch vụ IT.docx</div>
+            <div class="file-card-meta">890 KB · 14/09/2026 · Team</div>
+          </article>
+
+          <article class="file-card" role="listitem" tabindex="0" aria-label="Báo cáo tài chính quý III.xlsx — Private">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon xls">XLS</div>
+            <div class="file-card-name">Báo cáo tài chính quý III.xlsx</div>
+            <div class="file-card-meta">1.1 MB · 12/09/2026 · Private</div>
+          </article>
+
+          <article class="file-card" role="listitem" tabindex="0" aria-label="Ảnh ký kết hợp đồng.jpg — Public">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon img">IMG</div>
+            <div class="file-card-name">Ảnh ký kết hợp đồng.jpg</div>
+            <div class="file-card-meta">3.2 MB · 10/09/2026 · Public</div>
+          </article>
+
+          <article class="file-card" role="listitem" tabindex="0" aria-label="Biên bản họp tháng 8.pdf — Team">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon pdf">PDF</div>
+            <div class="file-card-name">Biên bản họp tháng 8.pdf</div>
+            <div class="file-card-meta">450 KB · 05/09/2026 · Team</div>
+          </article>
+
+          <article class="file-card" role="listitem" tabindex="0" aria-label="Hợp đồng thuê mặt bằng.docx — Public">
+            <div class="file-card-check"></div>
+            <div class="file-card-icon doc">DOC</div>
+            <div class="file-card-name">Hợp đồng thuê mặt bằng.docx</div>
+            <div class="file-card-meta">1.5 MB · 01/09/2026 · Public</div>
+          </article>
+
+        </div>
+
+        <!-- F9: Activity / Audit feed -->
+        <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+          <h2 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Hoạt động gần đây</h2>
+          <div class="activity-item">
+            <div class="activity-avatar">TT</div>
+            <div class="activity-content">
+              <span class="activity-user">Trần Thị B</span> đã tải lên <strong>Hợp đồng mua bán hàng hóa 2026.pdf</strong>
+              <div class="activity-time">2 giờ trước</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-avatar">AI</div>
+            <div class="activity-content">
+              <span class="activity-user">AI (act-as </span><strong>Phạm Văn C</strong>) đã đọc <strong>Hợp đồng dịch vụ IT.docx</strong>
+              <div class="activity-time">5 giờ trước</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-avatar">NV</div>
+            <div class="activity-content">
+              <span class="activity-user">Nguyễn Văn A</span> đã di chuyển <strong>Báo cáo tài chính quý III.xlsx</strong> vào Hợp đồng
+              <div class="activity-time">1 ngày trước</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Preview Panel -->
+      <aside class="preview-panel" aria-label="Xem trước">
+        <div class="preview-header">
+          <span class="preview-header-title">Chi tiết</span>
+          <button class="btn btn-ghost btn-sm" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="preview-body">
+          <!-- F5: Preview -->
+          <div class="preview-thumb">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Hợp đồng mua bán hàng hóa 2026.pdf</h3>
+
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Trạng thái</span>
+            <span class="status-badge status-approved"><span class="dot"></span>Đã duyệt</span>
+          </div>
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Kích thước</span>
+            <span class="preview-detail-value">2.4 MB</span>
+          </div>
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Ngày tạo</span>
+            <span class="preview-detail-value">15/09/2026</span>
+          </div>
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Người tạo</span>
+            <span class="preview-detail-value">Trần Thị B</span>
+          </div>
+          <!-- F8: Version -->
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Phiên bản</span>
+            <span class="preview-detail-value">v2.1 (hiện tại)</span>
+          </div>
+          <div class="preview-detail-row">
+            <span class="preview-detail-label">Visibility</span>
+            <span class="preview-detail-value">Public</span>
+          </div>
+          <div class="preview-detail-row" style="border-bottom: none;">
+            <span class="preview-detail-label">Danh mục</span>
+            <span class="preview-detail-value">Hợp đồng</span>
+          </div>
+
+          <div class="preview-tags">
+            <span class="tag orange">Hợp đồng</span>
+            <span class="tag">Mua bán</span>
+            <span class="tag">2026</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 16px;">
+            <button class="btn btn-primary" style="flex: 1;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Tải xuống
+            </button>
+            <!-- F4: Share -->
+            <button class="btn btn-secondary" aria-label="Chia sẻ" onclick="document.getElementById('shareModal').style.display='flex'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </button>
+            <button class="btn btn-secondary" aria-label="Chỉnh sửa">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- AI Assistant Panel — F3: AI Act-as-User -->
+      <aside class="ai-panel" aria-label="AI Assistant">
+        <div class="ai-panel-header">
+          <div class="ai-panel-header-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2z"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+          <div>
+            <div class="ai-panel-header-title">DMS AI Assistant</div>
+            <div class="ai-panel-header-subtitle">Act-as: <strong>Nguyễn Văn A</strong></div>
+          </div>
+        </div>
+
+        <div class="ai-messages" role="log" aria-live="polite">
+          <!-- Bot message -->
+          <div class="ai-msg bot">
+            <div class="ai-msg-avatar bot">AI</div>
+            <div class="ai-msg-content">
+              <div class="ai-msg-bubble">
+                Xin chào! Tôi đang hoạtộng với quyền của <strong>Nguyễn Văn A</strong>. Tôi chỉ thấy tài liệu mà bạn có quyền đọc. Bạn cần hỗ trợ gì?
+              </div>
+              <div class="ai-msg-suggestions">
+                <button class="ai-msg-suggestion">Tìm hợp đồng gần nhất</button>
+                <button class="ai-msg-suggestion">Tóm tắt nội dung file</button>
+                <button class="ai-msg-suggestion">Phân loại tài liệu</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- User message -->
+          <div class="ai-msg user">
+            <div class="ai-msg-avatar user">NV</div>
+            <div class="ai-msg-content">
+              <div class="ai-msg-bubble">
+                Tôi cần tìm tất cả hợp đồng đã được phê duyệt trong tháng 9
+              </div>
+            </div>
+          </div>
+
+          <!-- Bot response -->
+          <div class="ai-msg bot">
+            <div class="ai-msg-avatar bot">AI</div>
+            <div class="ai-msg-content">
+              <div class="ai-msg-bubble">
+                Tôi tìm thấy <strong>3 hợp đồng</strong> đã được phê duyệt trong tháng 9 (trong phạm vi bạn có quyền đọc):<br><br>
+                1. <strong>Hợp đồng mua bán hàng hóa 2026.pdf</strong> — 15/09/2026<br>
+                2. <strong>Hợp đồng dịch vụ IT.docx</strong> — 14/09/2026<br>
+                3. <strong>Hợp đồng thuê mặt bằng.docx</strong> — 01/09/2026<br><br>
+                Bạn muốn tôi mở file nào?
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-input-area">
+          <div class="ai-input-box">
+            <textarea placeholder="Hỏi AI về tài liệu (chỉ trong phạm vi quyền của bạn)..." rows="1" aria-label="Nhập tin nhắn"></textarea>
+            <button class="ai-input-send" aria-label="Gửi">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<!-- Upload Modal (F2 + F8: versioning) -->
+<div id="uploadModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="uploadTitle">Tải lên tài liệu</h2>
+      <button class="modal-close" aria-label="Đóng" onclick="document.getElementById('uploadModal').style.display='none'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" role="button" tabindex="0">
+        <div class="upload-zone-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="upload-zone-title">Kéo thả file hoặc click để chọn</div>
+        <div class="upload-zone-hint">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, TXT, CSV — Tối đa 100 MB</div>
+      </div>
+      <div style="margin-top: 16px;">
+        <label for="folder-select" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px;">Thư mục đích</label>
+        <select id="folder-select" style="width: 100%; height: 36px; padding: 0 12px; border: 1px solid #6D6E71; border-radius: 8px; background: var(--color-bg); color: var(--color-text-primary); font-size: 13px;">
+          <option>Hợp đồng</option>
+          <option>Báo cáo</option>
+          <option>Biểu mẫu</option>
+          <option>Hình ảnh</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="document.getElementById('uploadModal').style.display='none'">Hủy</button>
+      <button class="btn btn-primary">Tải lên</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal (F4: External sharing) -->
+<div id="shareModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+  <div class="modal" style="width: 420px;">
+    <div class="modal-header">
+      <h2 class="modal-title" id="shareTitle">Tạo link chia sẻ</h2>
+      <button class="modal-close" aria-label="Đóng" onclick="document.getElementById('shareModal').style.display='none'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label for="share-link" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px;">Link public</label>
+          <div style="display: flex; gap: 8px;">
+            <input id="share-link" type="text" value="https://dms.spp.io/s/a8f3k2m9" readonly style="flex: 1; height: 36px; padding: 0 12px; border: 1px solid #6D6E71; border-radius: 8px; background: var(--color-surface); color: var(--color-text-primary); font-size: 13px; font-family: var(--font-mono);">
+            <button class="btn btn-secondary">Copy</button>
+          </div>
+        </div>
+        <div>
+          <label for="share-expiry" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px;">Hết hạn</label>
+          <select id="share-expiry" style="width: 100%; height: 36px; padding: 0 12px; border: 1px solid #6D6E71; border-radius: 8px; background: var(--color-bg); color: var(--color-text-primary); font-size: 13px;">
+            <option>7 ngày</option>
+            <option>30 ngày</option>
+            <option>90 ngày</option>
+            <option>Không hết hạn</option>
+          </select>
+        </div>
+        <div>
+          <label for="share-password" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px;">Mật khẩu (tùy chọn)</label>
+          <input id="share-password" type="password" placeholder="Để trống nếu không đặt mật khẩu" style="width: 100%; height: 36px; padding: 0 12px; border: 1px solid #6D6E71; border-radius: 8px; background: var(--color-bg); color: var(--color-text-primary); font-size: 13px;">
+        </div>
+        <button class="btn btn-destructive btn-sm" style="align-self: flex-start;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Thu hồi link
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="document.getElementById('shareModal').style.display='none'">Đóng</button>
+      <button class="btn btn-primary">Lưu thay đổi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container">
+  <div class="toast" role="status" aria-live="polite">
+    <div class="toast-icon">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <span>File đã được tải lên thành công</span>
+  </div>
+</div>
+
+</body>
+</html>
