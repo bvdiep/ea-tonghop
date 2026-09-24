@@ -16,7 +16,7 @@
 
 ## 1. Kết luận tóm tắt
 
-**KHẢ THI — mức độ cao**, với hai phương án kiến trúc: **(A) 1 container OpenDesign riêng cho mỗi workspace SPP** (mục 6.1–6.2) hoặc **(B) nhúng OD chạy trực tiếp bên trong ACP sandbox container hiện có của workspace** (mục 6.2b). Cả hai đều không phải Docker-in-Docker — OD luôn chạy như process thường. Vì:
+**KHẢ THI — mức độ cao**, với phương án chính **(B) OD chạy trực tiếp bên trong ACP sandbox container hiện có của workspace** (mục 6.2b), và phương án dự phòng (A) container OD riêng biệt (mục 6.2) chỉ khi blast radius không chấp nhận được. Cả hai đều không phải Docker-in-Docker — OD luôn chạy như process thường. Vì:
 
 1. OD có sẵn **contract chính thức cho orchestrator bên ngoài** chuẩn bị workspace (`orchestratorWorkspace: {kind: "scratch", writeback: "external"}`) — đã implement thật trong daemon, không phải ý tưởng trên giấy (N2: `workspace-contract.ts`).
 2. OD có sẵn cơ chế **khóa phạm vi thư mục làm việc**: `OD_SANDBOX_MODE=1` + `OD_SANDBOX_IMPORT_ALLOWED_ROOTS` — mọi project import-folder ngoài allowed roots bị từ chối; toàn bộ agent home/config/tmp bị cô lập vào data dir (N2: `sandbox-mode.ts`).
@@ -174,7 +174,9 @@ OD có 3 chế độ: desktop Electron, from-source (`pnpm tools-dev`), và **Do
 
 ## 6. Giải pháp kỹ thuật đề xuất
 
-### 6.1 Kiến trúc đích (v1)
+### 6.1 Kiến trúc đích — Phương án A (DỰ PHÒNG)
+
+> **Phương án chính là B (6.2b): OD chạy trực tiếp trong ACP sandbox container hiện có của workspace.** Phương án A (container OD riêng biệt) chỉ là fallback khi blast radius hoặc version-coupling không chấp nhận được. Sơ đồ dưới đây mô tả A đầy đủ để dùng làm baseline so sánh.
 
 ```
 Browser (SPP UI, origin spp.example.com)
@@ -200,39 +202,43 @@ OD container (1 per SPP workspace)
 
 Nguyên tắc: **mỗi workspace SPP = 1 OD container độc lập** — isolation user đạt được ở tầng hạ tầng (khác OD standalone chia sẻ 1 daemon), tái dùng đúng pattern ACP sandbox đang chạy.
 
-### 6.2 Container & vòng đời
+### 6.2 Container & vòng đời (phương án A — fallback)
+
+Phương án chính (B) không cần container riêng; xem 6.2b.
 
 1. **Image riêng** `bsm-superpower-opendesign:v1`: FROM `ghcr.io/nexu-io/od:<pinned>` + cài opencode (và glibc compat nếu cần — tham khảo `deploy/README.md:173-176`). Pin version OD; nâng có chủ đích theo changelog (upstream release hàng tuần — coi như vendored dependency).
 2. **Lifecycle**: tạo container lazy (lần đầu user mở Design trong workspace) hoặc theo cùng nhịp provision workspace; kill theo idle tương tự session pool ACP. Port allocation theo pattern `host.docker.internal:<port>` hiện có.
 3. Tài nguyên: mem limit nên đặt **1-2GB** (không phải 384m mặc định) vì agent CLI chạy trong container; rootfs `read_only` + `no-new-privileges` + `pids_limit` giữ theo compose gốc của OD.
 
-### 6.2b Phương án B — OD chạy trực tiếp bên trong ACP sandbox container (không tạo container mới)
+### 6.2b Phương án B (CHÍNH) — OD chạy trực tiếp bên trong ACP sandbox container
 
-Đáp ứng đúng trực giác của việc "mỗi workspace SPP đã có 1 container, why not reuse": **OD daemon + web UI chạy như một process thường ngay bên trong ACP sandbox container hiện có** của workspace (image `bsm-superpower-acp-sandbox:v2` — Node 24, có sẵn opencode, glibc đầy đủ). Đây KHÔNG phải Docker-in-Docker — không có Docker nào chạy trong container; chỉ là thêm 1 daemon Node process (node apps/daemon/dist/...) cạnh opencode/entrypoint hiện có. OD cần ở đâu đó một Node runtime — container đã có Node 24.
+Mỗi workspace SPP đã có 1 container riêng với agent (opencode/Claude Code) setup sẵn. Thay vì tạo thêm 1 container OD riêng (phương án A), **OD daemon + web UI chạy như một process thường ngay bên trong container đó** — image `bsm-superpower-acp-sandbox:v2` đã có Node 24 + opencode + glibc đầy đủ, chỉ cần thêm OD daemon là đủ runtime. KHÔNG phải Docker-in-Docker: không Docker nào chạy trong container, chỉ là thêm 1 Node process cạnh entrypoint hiện có.
 
 Cách bật:
-1. **Cài đặt OD vào image sandbox**: thêm build step vào Dockerfile `bsm-superpower-acp-sandbox` (build OD từ source `pnpm --filter @open-design/daemon build` + web static export, hoặc copy `apps/daemon/dist` + `apps/web/out` từ stage build OD). Được phép vì đây là image inhouse tự chủ (spp repo control), không đụng image upstream.
-2. **Env của OD trong container**: `OD_DATA_DIR=/var/lib/od-data` (volume riêng hoặc dưới ACP data dir), `OD_BIND_HOST=127.0.0.1` (chỉ nghe loopback trong container), `OD_PORT=<port>`, `OD_SANDBOX_MODE=1`, `OD_SANDBOX_IMPORT_ALLOWED_ROOTS=<workspace dir trong container>` (chính là dir ACP đang bind-mount), `OD_API_TOKEN=<token per-workspace>`.
-3. **Workspace dir dùng chung**: OD import chính thư mục mà ACP container đang bind-mount → file design OD ghi ra sẽ được ACP agent / Files API thấy ngay, và ngược lại. Không cần mount thêm gì.
-4. **Gateway/proxy**: SPP backend truy cập OD qua `host.docker.internal:<port>` như hiện ACP; browser không truy cập trực tiếp OD (auth bridge như 6.4, phương án A auth-proxy).
-5. **Lifecycle**: start OD cùng entrypoint container (supervisor script / entrypoint.sh chạy daemon background), hoặc start lazy qua API admin của ACP daemon.
+1. **Cài đặt OD vào image ACP sandbox**: thêm build step vào Dockerfile `bsm-superpower-acp-sandbox` (build OD từ source `pnpm --filter @open-design/daemon build` + web static export, hoặc copy `apps/daemon/dist` + `apps/web/out` từ stage build OD). Được phép vì đây là image inhouse tự chủ (spp repo control), không đụng image upstream.
+2. **Env của OD trong container**: `OD_DATA_DIR=<riêng trong container>`, `OD_BIND_HOST=127.0.0.1` (chỉ nghe loopback trong container), `OD_PORT=<port riêng>`, `OD_SANDBOX_MODE=1`, `OD_SANDBOX_IMPORT_ALLOWED_ROOTS=<workspace dir trong container>` (chính là dir ACP đang bind-mount), `OD_API_TOKEN=<token per-workspace>`.
+3. **Workspace dir dùng chung**: OD import chính thư mục mà ACP container đang bind-mount → file design OD ghi ra ACP agent thấy ngay qua filesystem (không qua mạng), và ngược lại. Zero network hop cho tương tác file.
+4. **Agent tương tác trong cùng process tree**: OD daemon spawn opencode (có sẵn trong image) → agent chạy như child process của OD daemon → ghi file vào workspace dir. ACP agent (opencode/Claude Code riêng của ACP daemon) cùng mount workspace dir → đọc/ghi chung directory, không cần RPC/HTTP giữa 2 container.
+5. **Gateway/proxy**: SPP backend truy cập OD qua `host.docker.internal:<port>` như hiện ACP; browser không truy cập trực tiếp OD (auth bridge 6.4, phương án A auth-proxy).
+6. **Lifecycle**: start OD cùng entrypoint container (supervisor script / entrypoint.sh chạy daemon background), hoặc start lazy qua API admin của ACP daemon.
 
-Lợi điểm của phương án B:
-- Không thêm container per workspace (tiết kiệm RAM cỡ ~20-100MB idle/OD, số container không đổi).
-- Workspace dir đã bind-mount sẵn, không cần cấu hình mount mới.
+Lợi điểm của phương án B (tại sao đây là phương án đúng):
+- Không thêm container per workspace — số container không đổi, không phải maintain lifecycle thêm.
+- Workspace dir đã bind-mount sẵn — không cần mount thêm, không cần cross-container file sharing.
 - opencode CLI đã có sẵn trong image → không cần build image OD+opencode riêng.
+- Agent tương tác trong cùng 1 container → đơn giản hơn nhiều so với 2 container riêng biệt (không cần gọi qua mạng, không cần chia sẻ volume, không cần đồng bộ state).
 - Network: OD nằm ngay trong ACP sandbox network — không cần port public thêm.
 - Reuse entrypoint/lifecycle hiện có của ACP container.
 
-Rủi ro / đánh đổi của phương án B (quan trọng — phải đọc kỹ trước khi chọn):
-1. **Blast radius tăng**: OD là process to (Express + static UI + agent spawn + SQLite + SSE) — một OD daemon bị lỗi/OOM có thể kéo cả ACP container (chat agent của workspace) sập theo. Phương án A cô lập fail ở container riêng.
-2. **Mâu thuẫn resource**: mem limit ACP container hiện tại được sizing cho agent chat; thêm OD (heap 192MB + agent spawn) có thể cần nâng limit cho TẤT CẢ workspace kể cả workspace không dùng Design.
-3. **Version coupling**: nâng OD (upstream release hàng tuần) = build lại image ACP sandbox = **restart mọi ACP container đang chạy** (mất session agent chạy dở). Phương án A nâng OD độc lập, không đụng ACP.
-4. **Node version coupling**: OD yêu cầu Node ~24 — trùng với Node 24 của ACP image hiện tại, nhưng nếu một bên nâng Node thì bên kia cũng kéo theo. Là nốt dính 2 dependency graph.
-5. **Không khớp "sandbox gốc của OD"**: compose gốc của OD bật `read_only` rootfs + `no-new-privileges` + `pids_limit 256` — áp các ràng buộc này lên ACP container sẽ phá ACP (agent cần ghi workspace). Bỏ các ràng buộc này thì mất một lớp hardening OD standalone có sẵn. (Điều kiện: file `/tmp` và volume data vẫn phải mount — khớp pattern tmpfs không có trong ACP container hiện tại.)
-6. **Session pool LRU của SPP (5 session/user)** không biết gì về OD — OD daemon phải do ACP container quản thêm 1 phụ thuộc runtime cần theo dõi riêng.
+Rủi ro / đánh đổi của phương án B (cần quản lý, nhưng không phải blocker):
+1. **Blast radius tăng**: OD daemon hỏng/OOM có thể kéo cả ACP container (chat agent) sập theo. Giảm thiểu: giám sát mem/process; có thể set cgroup limit riêng cho OD process; POC-2b verify trước khi production.
+2. **Mâu thuẫn resource**: mem limit ACP container hiện tại được sizing cho agent chat; thêm OD (heap 192MB + agent spawn) có thể cần nâng limit cho TẤT CẢ workspace kể cả workspace không dùng Design. Giảm thiểu: đo profile thực tế (POC-1/POC-2); chỉ bật OD khi workspace thực sự dùng (lazy start).
+3. **Version coupling**: nâng OD (upstream release hàng tuần) = build lại image ACP sandbox = restart mọi ACP container đang chạy (mất session agent chạy dở). Giảm thiểu: pin version dài; nâng theo cửa sổ bảo trị; có thể tách OD thành layer riêng trong Dockerfile để cache tốt hơn.
+4. **Node version coupling**: OD yêu cầu Node ~24 — trùng với Node 24 của ACP image hiện tại, nhưng nếu một bên nâng Node thì bên kia cũng kéo theo. Giảm thiểu: pin cả 2; upgrade cùng lúc có kiểm soát.
+5. **Không khớp "sandbox gốc của OD"**: compose gốc của OD bật `read_only` rootfs + `no-new-privileges` + `pids_limit 256` — áp các ràng buộc này lên ACP container sẽ phá ACP (agent cần ghi workspace). Bỏ các ràng buộc này thì mất một lớp hardening OD standalone có sẵn. Giảm thiểu: OD tự có `OD_SANDBOX_MODE` env isolate agent home/config/tmp vào data dir — đây là lớp bảo mật chính, không phải container-level hardening.
+6. **Session pool LRU của SPP (5 session/user)** không biết gì về OD — OD daemon phải do ACP container quản thêm 1 phụ thuộc runtime cần theo dõi riêng. Giảm thiểu: thêm health check + restart logic cho OD process trong entrypoint script.
 
-**Khuyến nghị**: chọn **A (container OD riêng) làm v1** — cô lập lỗi, version độc lập, bề mặt bảo mật giữ nguyên chuẩn compose của OD. **B phù hợp khi** server thiếu tài nguyên (nhiều workspace × mem limit), hoặc khi muốn giảm tối đa số container — chấp nhận trade-off version-coupling + blast radius; nên làm B chỉ sau khi A đã chạy ổn định và đo được profile thực tế (RAM OD idle vs khi chạy agent).
+**Khuyến nghị: B là phương án chính.** A (container OD riêng) chỉ là fallback khi blast radius hoặc version-coupling không chấp nhận được.
 
 ### 6.3 Workspace binding (ghim OD vào workspace)
 
