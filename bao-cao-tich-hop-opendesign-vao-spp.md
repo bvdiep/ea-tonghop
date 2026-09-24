@@ -16,7 +16,7 @@
 
 ## 1. Kết luận tóm tắt
 
-**KHẢ THI — mức độ cao**, với kiến trúc đề xuất **"1 container OpenDesign cho mỗi workspace SPP"**, vì:
+**KHẢ THI — mức độ cao**, với hai phương án kiến trúc: **(A) 1 container OpenDesign riêng cho mỗi workspace SPP** (mục 6.1–6.2) hoặc **(B) nhúng OD chạy trực tiếp bên trong ACP sandbox container hiện có của workspace** (mục 6.2b). Cả hai đều không phải Docker-in-Docker — OD luôn chạy như process thường. Vì:
 
 1. OD có sẵn **contract chính thức cho orchestrator bên ngoài** chuẩn bị workspace (`orchestratorWorkspace: {kind: "scratch", writeback: "external"}`) — đã implement thật trong daemon, không phải ý tưởng trên giấy (N2: `workspace-contract.ts`).
 2. OD có sẵn cơ chế **khóa phạm vi thư mục làm việc**: `OD_SANDBOX_MODE=1` + `OD_SANDBOX_IMPORT_ALLOWED_ROOTS` — mọi project import-folder ngoài allowed roots bị từ chối; toàn bộ agent home/config/tmp bị cô lập vào data dir (N2: `sandbox-mode.ts`).
@@ -167,7 +167,7 @@ OD có 3 chế độ: desktop Electron, from-source (`pnpm tools-dev`), và **Do
 | 3 | Không cho chuyển workspace tự do | **Có** | Sandbox import gate từ chối mọi path ngoài allowed roots, chống symlink (N2); import chặn system/credential dirs | — |
 | 4 | Dữ liệu thống nhất với agent SPP | **Có** | Folder-backed project = chính workspace dir mà ACP sandbox bind-mount (N2+N3) | — |
 | 5 | Multi-user trên cùng OD | Không nên | Single-tenant token, không user model (N1) | Isolation bằng 1 container + 1 token per workspace (đúng mô hình SPP) |
-| 6 | Agent chạy trong OD | **Có, cần build image** | Image không bundle CLI (N1); opencode là runtime def chính thức của OD (N1) | Build/maintain image `od + opencode`; cân nhắc memory limit cao hơn khi agent chạy |
+| 6 | Agent chạy trong OD | **Có, cần build image** (A) hoặc dùng opencode sẵn trong ACP image (B) | Image không bundle CLI (N1); opencode là runtime def chính thức của OD (N1); ACP sandbox image đã có opencode (N3) | A: build/maintain image `od + opencode`; B: build lại image ACP khi nâng OD; cân nhắc memory limit cao hơn khi agent chạy |
 | 7 | Vận hành dài hạn | **Có, có điều kiện** | Apache-2.0; compose an toàn mặc định | Upstream release hàng tuần → phải pin version |
 
 ---
@@ -205,6 +205,34 @@ Nguyên tắc: **mỗi workspace SPP = 1 OD container độc lập** — isolati
 1. **Image riêng** `bsm-superpower-opendesign:v1`: FROM `ghcr.io/nexu-io/od:<pinned>` + cài opencode (và glibc compat nếu cần — tham khảo `deploy/README.md:173-176`). Pin version OD; nâng có chủ đích theo changelog (upstream release hàng tuần — coi như vendored dependency).
 2. **Lifecycle**: tạo container lazy (lần đầu user mở Design trong workspace) hoặc theo cùng nhịp provision workspace; kill theo idle tương tự session pool ACP. Port allocation theo pattern `host.docker.internal:<port>` hiện có.
 3. Tài nguyên: mem limit nên đặt **1-2GB** (không phải 384m mặc định) vì agent CLI chạy trong container; rootfs `read_only` + `no-new-privileges` + `pids_limit` giữ theo compose gốc của OD.
+
+### 6.2b Phương án B — OD chạy trực tiếp bên trong ACP sandbox container (không tạo container mới)
+
+Đáp ứng đúng trực giác của việc "mỗi workspace SPP đã có 1 container, why not reuse": **OD daemon + web UI chạy như một process thường ngay bên trong ACP sandbox container hiện có** của workspace (image `bsm-superpower-acp-sandbox:v2` — Node 24, có sẵn opencode, glibc đầy đủ). Đây KHÔNG phải Docker-in-Docker — không có Docker nào chạy trong container; chỉ là thêm 1 daemon Node process (node apps/daemon/dist/...) cạnh opencode/entrypoint hiện có. OD cần ở đâu đó một Node runtime — container đã có Node 24.
+
+Cách bật:
+1. **Cài đặt OD vào image sandbox**: thêm build step vào Dockerfile `bsm-superpower-acp-sandbox` (build OD từ source `pnpm --filter @open-design/daemon build` + web static export, hoặc copy `apps/daemon/dist` + `apps/web/out` từ stage build OD). Được phép vì đây là image inhouse tự chủ (spp repo control), không đụng image upstream.
+2. **Env của OD trong container**: `OD_DATA_DIR=/var/lib/od-data` (volume riêng hoặc dưới ACP data dir), `OD_BIND_HOST=127.0.0.1` (chỉ nghe loopback trong container), `OD_PORT=<port>`, `OD_SANDBOX_MODE=1`, `OD_SANDBOX_IMPORT_ALLOWED_ROOTS=<workspace dir trong container>` (chính là dir ACP đang bind-mount), `OD_API_TOKEN=<token per-workspace>`.
+3. **Workspace dir dùng chung**: OD import chính thư mục mà ACP container đang bind-mount → file design OD ghi ra sẽ được ACP agent / Files API thấy ngay, và ngược lại. Không cần mount thêm gì.
+4. **Gateway/proxy**: SPP backend truy cập OD qua `host.docker.internal:<port>` như hiện ACP; browser không truy cập trực tiếp OD (auth bridge như 6.4, phương án A auth-proxy).
+5. **Lifecycle**: start OD cùng entrypoint container (supervisor script / entrypoint.sh chạy daemon background), hoặc start lazy qua API admin của ACP daemon.
+
+Lợi điểm của phương án B:
+- Không thêm container per workspace (tiết kiệm RAM cỡ ~20-100MB idle/OD, số container không đổi).
+- Workspace dir đã bind-mount sẵn, không cần cấu hình mount mới.
+- opencode CLI đã có sẵn trong image → không cần build image OD+opencode riêng.
+- Network: OD nằm ngay trong ACP sandbox network — không cần port public thêm.
+- Reuse entrypoint/lifecycle hiện có của ACP container.
+
+Rủi ro / đánh đổi của phương án B (quan trọng — phải đọc kỹ trước khi chọn):
+1. **Blast radius tăng**: OD là process to (Express + static UI + agent spawn + SQLite + SSE) — một OD daemon bị lỗi/OOM có thể kéo cả ACP container (chat agent của workspace) sập theo. Phương án A cô lập fail ở container riêng.
+2. **Mâu thuẫn resource**: mem limit ACP container hiện tại được sizing cho agent chat; thêm OD (heap 192MB + agent spawn) có thể cần nâng limit cho TẤT CẢ workspace kể cả workspace không dùng Design.
+3. **Version coupling**: nâng OD (upstream release hàng tuần) = build lại image ACP sandbox = **restart mọi ACP container đang chạy** (mất session agent chạy dở). Phương án A nâng OD độc lập, không đụng ACP.
+4. **Node version coupling**: OD yêu cầu Node ~24 — trùng với Node 24 của ACP image hiện tại, nhưng nếu một bên nâng Node thì bên kia cũng kéo theo. Là nốt dính 2 dependency graph.
+5. **Không khớp "sandbox gốc của OD"**: compose gốc của OD bật `read_only` rootfs + `no-new-privileges` + `pids_limit 256` — áp các ràng buộc này lên ACP container sẽ phá ACP (agent cần ghi workspace). Bỏ các ràng buộc này thì mất một lớp hardening OD standalone có sẵn. (Điều kiện: file `/tmp` và volume data vẫn phải mount — khớp pattern tmpfs không có trong ACP container hiện tại.)
+6. **Session pool LRU của SPP (5 session/user)** không biết gì về OD — OD daemon phải do ACP container quản thêm 1 phụ thuộc runtime cần theo dõi riêng.
+
+**Khuyến nghị**: chọn **A (container OD riêng) làm v1** — cô lập lỗi, version độc lập, bề mặt bảo mật giữ nguyên chuẩn compose của OD. **B phù hợp khi** server thiếu tài nguyên (nhiều workspace × mem limit), hoặc khi muốn giảm tối đa số container — chấp nhận trade-off version-coupling + blast radius; nên làm B chỉ sau khi A đã chạy ổn định và đo được profile thực tế (RAM OD idle vs khi chạy agent).
 
 ### 6.3 Workspace binding (ghim OD vào workspace)
 
@@ -270,8 +298,11 @@ Thiết kế:
 | R4 | Upstream release hàng tuần, breaking change có thể xảy ra | Trung bình | Pin version; quy trình nâng có chủ đích + smoke test |
 | R5 | Memory khi agent chạy trong OD container | Thấp | Limit 1-2GB; theo dõi; tách agent ra container riêng nếu cần (v2) |
 | R6 | Image `od + opencode` phải tự build/maintain | Thấp | Dockerfile mỏng (FROM od + install opencode); CI build theo pin version |
-| R7 | License khi redistrib vào customer release (`bsm-releases`) | Thấp | Apache-2.0 cho phép; giữ LICENSE/NOTION attribution khi bundle image |
+| R7 | License khi redistribute vào customer release (`bsm-releases`) | Thấp | Apache-2.0 cho phép; giữ LICENSE/NOTICE attribution khi bundle image |
 | R8 | SSE/static qua auth-proxy chưa verify hiệu năng | Thấp | POC Q4 đo trực tiếp |
+| R9 | (Chỉ phương án B) OD daemon hỏng/OOM kéo sập ACP container (chat agent) theo | Trung bình | Chỉ chọn B nếu chấp nhận coupling; giám sát mem; fallback về A |
+| R10 | (Chỉ phương án B) Nâng OD = build lại image ACP + restart mọi ACP container (mất session agent chạy dở) | Trung bình | Pin version dài; nâng theo cửa sổ bảo trì; hoặc chọn A |
+| R11 | (Chỉ phương án B) Mất lớp hardening compose OD (read_only rootfs, no-new-privileges, pids_limit) khi áp lên ACP container | Thấp | Chấp nhận — ACP đã có isolation riêng; cân nhắc lại nếu security review yêu cầu |
 
 ---
 
@@ -281,6 +312,7 @@ Thiết kế:
 |---|---|---|---|
 | POC-1 | Chạy image OD local với `OD_SANDBOX_MODE=1` + `OD_SANDBOX_IMPORT_ALLOWED_ROOTS=<dir test>`; import folder; thử import path ngoài root (phải bị chặn); thử tạo project od-owned | 0.5-1 ngày | Lock hoạt động đúng; sandbox env đúng như code |
 | POC-2 | Build image `od + opencode`; chạy 1 run thiết kế trong container; verify file ghi vào workspace dir | 0.5 ngày | Agent chạy end-to-end, file xuất hiện đúng chỗ |
+| POC-2b | (Phương án B) Cài OD daemon vào copy của image ACP sandbox; chạy OD cạnh opencode cùng 1 container; verify OD daemon serve + agent run + không phá ACP entrypoint | 0.5-1 ngày | OD chạy trong ACP container, ACP agent vẫn chạy bình thường song song |
 | POC-3 | Auth: verify Q1 (token qua query/cookie?), dựng auth-proxy sidecar kiểm tra JWT SPP → OD; nhúng iframe vào `/w/[slug]/design` (dev) | 1 ngày | Mở Design từ SPP UI, auth qua membership, không lộ token |
 | POC-4 | Verify Q2 (OD web base-path), Q3 (Origin header từ iframe), Q4 (SSE qua proxy) | 0.5 ngày | Chốt phương án nhúng A hay B |
 
