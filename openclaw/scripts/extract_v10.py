@@ -80,6 +80,11 @@ def is_cron_message(role, text):
         return text.strip().startswith("[cron:")
     if role == "assistant":
         txt = text.strip()
+        # cron completion echoes like "[cron:...] Run complete." are runtime
+        # status, not real conversation — only when the text STARTS with the
+        # marker (a message merely mentioning "cron:" mid-text is real talk)
+        if txt.startswith("[cron:") or txt.startswith("#[cron:") or txt.startswith("# [cron:"):
+            return True
         return txt in ("NO_REPLY", "<|finish|>", "HEARTBEAT_OK")
     return False
 
@@ -182,6 +187,56 @@ def is_phantom_greeting(text):
             return True
     return False
 
+def is_completion_artifact(text):
+    """Model/runtime completion artifacts leaked as assistant text."""
+    t = text.strip()
+    if t in ("<|done|>", "<|finish|>", "<|startingwith|>"):
+        return True
+    if "<|thought|>" in t or t.startswith("<|thinking"):
+        return True
+    if "<|channel" in t or "channel|>" in t:
+        return True
+    if "Empty response" in t or t in ("unable to process request.",):
+        return True
+    if "<function-call>" in t or "<function_result>" in t or re.search(r"<read<|</function", t):
+        return True
+    if t.startswith("\\begin{center}") or t == "\\text{Done.}":
+        return True
+    return False
+
+FAILED_PREFIX = "[assistant turn failed before producing content]"
+REPLY_PREFIX = "[[reply_to_current]]"
+
+def strip_failed_prefix(text):
+    if text.startswith(FAILED_PREFIX):
+        return text[len(FAILED_PREFIX):].lstrip()
+    return text
+
+def strip_reply_prefix(text):
+    return re.sub(r"\[\[reply_to_current\]\]\s*", "", text)
+
+def strip_untrusted_metadata(text):
+    """Remove 'Conversation info (untrusted metadata)' JSON blocks wherever
+    they appear (start or middle of a user message, e.g. after a Bootstrap
+    pending block or a media-attached marker), keeping surrounding real text.
+    """
+    pattern = re.compile(
+        r"Conversation info \(untrusted metadata\):\n```json\n\{.*?\}\n```"
+        r"(?:\n+Sender \(untrusted metadata\):\n```json\n\{.*?\}\n```)?",
+        re.S,
+    )
+    out = pattern.sub("", text)
+    # Strip "Conversation context (untrusted, chronological...)" history
+    # blocks: header + "#<id> ... UTC <sender>: text" lines, keeping the tail
+    # (the actual current user message).
+    ctx = re.search(
+        r"Conversation context \(untrusted, chronological[^\n]*\n"
+        r"(?:#\d+[^\n]*\n)*", out)
+    if ctx:
+        out = out[:ctx.start()] + out[ctx.end():]
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return out
+
 def extract_messages_from_file(filepath):
     results = []
     is_trajectory = '.trajectory.' in filepath
@@ -246,10 +301,16 @@ def extract_messages_from_file(filepath):
     if user_msg_count == 0 and assistant_msg_count == 0 and not has_trajectory_msgs:
         return results
     
-    # Session-level filtering
-    if has_cron_prompt and user_msg_count <= 1:
-        return results
-    
+    # Session-level filtering.
+    # NOTE: the old rule "skip if has_cron_prompt and user_msg_count <= 1" was
+    # removed: on the live dir cron sessions accumulated many user messages so
+    # the rule never fired, but after a sqlite-import/reset backup each cron
+    # turn is its own tiny file (1 cron prompt + 1 reply), so the rule wiped
+    # ALL cron work (morning greetings, email summaries) the user wants to
+    # keep (see SKIP 11 above). Message-level filters (cron prompt text,
+    # NO_REPLY/status, toolUse) already drop pure-noise cron turns; keeping
+    # the session only adds real assistant content.
+
     if has_heartbeat_poll and not has_cron_prompt and user_msg_count <= 2:
         all_heartbeat = True
         for d, msg in all_msgs:
@@ -275,6 +336,17 @@ def extract_messages_from_file(filepath):
         text = extract_text(content)
         if not text:
             continue
+        if role == "assistant":
+            text = strip_failed_prefix(text)
+            text = strip_reply_prefix(text)
+            if not text.strip():
+                continue
+        elif role == "user":
+            if text.strip() == "[OpenClaw heartbeat poll]":
+                continue
+            text = strip_untrusted_metadata(text)
+            if not text.strip():
+                continue
         
         if role == "assistant" and has_tool_call(content):
             continue
@@ -293,7 +365,9 @@ def extract_messages_from_file(filepath):
             continue
         if is_cron_message(role, text):
             continue
-        if role == "assistant" and is_thinking_text(text):
+        if role == "assistant" and is_phantom_greeting(text):
+            continue
+        if role == "assistant" and is_completion_artifact(text):
             continue
         if role == "toolResult" and is_tool_result_noise(text):
             continue
@@ -302,8 +376,6 @@ def extract_messages_from_file(filepath):
         if is_inter_session_text(text):
             continue
         if is_pre_compaction_metadata(role, text):
-            continue
-        if role == "assistant" and is_phantom_greeting(text):
             continue
         
         ts_ms = parse_ts_ms(d, msg)
@@ -330,6 +402,17 @@ def extract_messages_from_file(filepath):
                 text = extract_text(content)
                 if not text:
                     continue
+                if role == "assistant":
+                    text = strip_failed_prefix(text)
+                    text = strip_reply_prefix(text)
+                    if not text.strip():
+                        continue
+                elif role == "user":
+                    if text.strip() == "[OpenClaw heartbeat poll]":
+                        continue
+                    text = strip_untrusted_metadata(text)
+                    if not text.strip():
+                        continue
                 
                 # Apply same filters
                 if role == "assistant" and has_tool_call(content):
@@ -353,6 +436,8 @@ def extract_messages_from_file(filepath):
                 if is_pre_compaction_metadata(role, text):
                     continue
                 if role == "assistant" and is_phantom_greeting(text):
+                    continue
+                if role == "assistant" and is_completion_artifact(text):
                     continue
                 
                 ts_ms = parse_ts_ms(d, m)
