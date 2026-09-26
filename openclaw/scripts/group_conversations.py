@@ -28,6 +28,7 @@ CTX_PAT = re.compile(
     r"Conversation context \(untrusted, chronological[^\n]*\n(?:#\d+[^\n]*\n)*")
 
 NOISE_EXACT = {"[OpenClaw heartbeat poll]", "NO_REPLY", "<|finish|>", "HEARTBEAT_OK"}
+NOISE_PREFIXES = ("/start", "A new session was started via /new or /reset")
 
 
 def clean_user(text):
@@ -79,7 +80,7 @@ def load_events():
                     text = clean_user(str(d.get("prompt") or ""))
                     if not text or text in NOISE_EXACT:
                         continue
-                    if text.startswith("[cron:"):
+                    if text.startswith("[cron:") or text.startswith(NOISE_PREFIXES):
                         continue
                     events.setdefault(sid, []).append((dt, "user", text))
                 else:
