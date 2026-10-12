@@ -75,13 +75,42 @@ Kiến trúc của chúng tôi được thiết kế quanh đúng bốn từ kh�
 
 **Đã triển khai thật:** PowerUp đã xây dựng và vận hành pipeline tri thức sâu với hybrid search (vector + keyword) + reranker model + OCR GPU — xử lý được văn bản ngân hàng đặc thù như biểu phí dạng bảng, thông tư dạng scan. EA tích hợp pipeline này qua cổng MCP, cho phép agent truy xuất cả dữ liệu cấu trúc và phi cấu trúc trong cùng một luồng hội thoại.
 
-### 3.3 SUY LUẬN — agent tự lập kế hoạch, kết luận luôn có căn cứ
+### 3.3 SUY LUẬN — ba tầng, và tầng khó nhất không phải tìm kiếm
 
 **Bài toán con:** Câu hỏi phức tạp không có câu trả lời sẵn trong một tài liệu. *"Hồ sơ vay của khách hàng X còn thiếu chứng từ gì so với quy định cho vay trung dài hạn?"* — cần truy vấn hệ thống hồ sơ, truy xuất danh mục chứng từ bắt buộc, rồi đối chiếu và lập kế hoạch hành động. Không phải cây luồng cứng định nghĩa trước — mà là suy luận động dựa trên ngữ cảnh câu hỏi.
 
+**Ba tầng của bài toán — và tầng nào mới là tầng khó:**
+
+| Tầng | Bản chất | Ai cũng làm được? |
+|---|---|---|
+| **1. TÌM** | Khớp từ khóa hoặc khớp ngữ nghĩa (semantic), trả về đoạn văn bản liên quan | Phần lớn giải pháp RAG dừng ở đây |
+| **2. TỔNG HỢP** | Gom nhiều nguồn, nhiều phiên bản văn bản, viết lại thành một câu trả lời mạch lạc | Khó hơn — nhưng vẫn là "đọc và gom" |
+| **3. LÝ LUẬN / ÁP DỤNG** | Từ quy định chung + dữ kiện cụ thể → kết luận cho **tình huống này** | Đây là tầng quyết định — và không phải bài toán tìm kiếm |
+
+Tầng 1 và 2 trả lời được câu hỏi *"quy định nói gì?"*. Tầng 3 trả lời câu hỏi *"tình huống của tôi thì thế nào?"* — **hai câu hỏi hoàn toàn khác nhau về bản chất.**
+
+**Ví dụ: "Khách hàng X có vi phạm điều khoản vay hay không?"**
+
+Câu hỏi này **không thể trả lời bằng tra cứu** — dù tra cứu có giỏi đến đâu. Muốn trả lời phải đi qua một chuỗi lý luận:
+
+1. **Xác định điều khoản nào áp dụng** — hợp đồng nào, phiên bản điều khoản nào, tại thời điểm nào còn hiệu lực. *(Đây chính là lớp "chọn luật" — tương tự bài toán pháp luật có nghị định thay đổi theo thời gian.)*
+2. **Phân rã điều khoản thành các điều kiện cấu thành** — nghĩa vụ trả nợ đúng hạn, duy trì tỷ lệ tài sản bảo đảm, mục đích sử dụng vốn đúng cam kết, nghĩa vụ cung cấp thông tin…
+3. **Gắn dữ kiện thực tế của khách hàng X vào từng điều kiện** — lịch sử thanh toán, dư nợ, giá trị tài sản bảo đảm hiện tại, mục đích giải ngân thực tế.
+4. **Kiểm tra từng điều kiện**, xử lý các khái niệm mở trong văn bản ("bất khả kháng", "trọng yếu", "hợp lý") — nêu rõ chỗ nào còn phán đoán.
+5. **Kết luận kèm chuỗi lập luận** — điều kiện nào thoả, điều kiện nào không, điều kiện nào chưa đủ dữ kiện để kết luận.
+
+Không có tầng 3, hệ thống chỉ trả về một đoạn điều khoản và để cán bộ tự làm nốt phần khó nhất. Đây là lý do nhiều giải pháp RAG "trông rất thông minh" nhưng không giải quyết được việc thật của ngân hàng.
+
 **Giải pháp:** Mỗi câu hỏi được agent **phân tích và lập kế hoạch**: cần nguồn nào, gọi công cụ nào theo thứ tự nào, thiếu dữ liệu thì hỏi lại hay báo thiếu. Kết luận trong câu trả lời **bắt buộc gắn căn cứ**: số liệu từ nguồn nào, văn bản số hiệu nào điều khoản nào. Không có căn cứ → câu trả lời từ chối có kiểm soát, không bịa. Bộ nhớ hội thoại theo từng cán bộ: trợ lý nhớ ngữ cảnh làm việc lâu dài, hỗ trợ câu hỏi nối tiếp tự nhiên.
 
-**Đã triển khai thật:** EA đã vận hành agent runtime tự điều phối với 13 nhóm năng lực / 43 công cụ — agent tự nhận diện ý định, tự chọn công cụ phù hợp, tự lập kế hoạch truy vấn nhiều nguồn. Hệ thống audit ghi nhận toàn bộ chuỗi suy luận: từ câu hỏi → kế hoạch → công cụ gọi → kết quả trung gian → câu trả lời cuối. Đây là điều kiện tiên quyết để ngân hàng chấp nhận AI trong môi trường có kiểm toán.
+**Ràng buộc của tầng lý luận — nói thẳng vì đây là tầng rủi ro cao nhất:** một kết luận sai ở tầng này có hệ quả pháp lý và tài chính, nên chúng tôi thiết kế nó có kiểm soát chứ không để AI "phán":
+
+- **Lý luận theo cấu trúc**, không sinh văn xuôi tự do: điều kiện → dữ kiện → kết luận, để kiểm chứng lại được từng bước.
+- **Thiếu dữ kiện thì nêu rõ là thiếu** — không suy diễn lấp chỗ trống.
+- **AI đưa ra đánh giá và chuỗi lập luận; con người quyết định.** Hệ thống không thay thế phán quyết của cán bộ — nó rút ngắn thời gian tìm và lập luận, và làm phần đó minh bạch.
+- **Toàn bộ chuỗi lập luận được audit** — kiểm toán lại được vì sao hệ thống đi đến kết luận đó.
+
+**Đã triển khai thật:** EA đã vận hành agent runtime tự điều phối với 13 nhóm năng lực / 43 công cụ — agent tự nhận diện ý định, tự chọn công cụ phù hợp, tự lập kế hoạch truy vấn nhiều nguồn. Hệ thống audit ghi nhận toàn bộ chuỗi suy luận: từ câu hỏi → kế hoạch → công cụ gọi → kết quả trung gian → câu trả lời cuối. Đây là điều kiện tiên quyết để ngân hàng chấp nhận AI trong môi trường có kiểm toán. Phần kiến trúc của tầng lý luận (lập kế hoạch, gắn căn cứ, từ chối có kiểm soát) đã có sẵn; phần hiệu chỉnh theo nghiệp vụ cụ thể của ngân hàng sẽ làm cùng chuyên gia của ngân hàng trong POC — chúng tôi nói rõ điều này thay vì hứa một hệ thống tự phán quyết.
 
 ### 3.4 TÍNH TOÁN — engine nghiệp vụ tách biệt LLM
 
