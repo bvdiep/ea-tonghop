@@ -28,7 +28,22 @@ Không nằm trong một hệ thống nào cả — phải mở nhiều hệ th�
 
 **Bài toán không phải "có chatbot" — mà là có một trợ lý biết đọc dữ liệu và quy định của chính ngân hàng, tính toán chính xác, đúng phạm vi được phép — và chứng minh được điều đó.**
 
-## Giải pháp — bốn năng lực lõi
+## Đặc biệt khó: Google tìm được mọi thứ — nhưng AI doanh nghiệp thì không
+
+**Tại sao truy vấn đa nguồn + suy luận là bài toán thực sự khó:**
+
+| | Google / internet | Dữ liệu nội bộ ngân hàng |
+|---|---|---|
+| **Dữ liệu** | Công khai, đã index sẵn | Phân tán, chưa từng tổ chức cho AI |
+| **Ngôn ngữ** | Từ khóa đồng nhất | Thuật ngữ nội bộ, viết tắt, mã phòng ban |
+| **Quyền** | Ai cũng xem được | Phân quyền theo chức danh, phòng ban |
+| **Thời điểm** | Trang web cũ là trang web cũ | Quy định đổi theo thời gian — "hiện hành" là bản nào? |
+| **Tính toán** | Không có | Phải chính xác tuyệt đối — không "gầu đúng" |
+| **Trách nhiệm** | Không ai kiểm tra | Phải truy vết nguồn, phục vụ kiểm toán |
+
+**Bài toán không phải "tìm kiếm" — mà là "hiểu đúng ngữ cảnh doanh nghiệp, truy xuất đúng nguồn, tính đúng, và chứng minh được."** Hầu hết các thử nghiệm AI trong ngân hàng dừng lại ở demo — vì họ giải quyết phần dễ (chat), không giải quyết phần khó.
+
+## Giải pháp — bốn năng lực lõi (đã triển khai thật)
 
 - **TRUY VẤN** — hỏi dữ liệu bằng tiếng Việt, qua cổng có kiểm soát: chỉ-đọc, giới hạn kết quả, gắn thời điểm dữ liệu.
 - **ĐA NGUỒN** — số liệu (DWH, CSDL nghiệp vụ) và văn bản (thông tư, quy định, file scan + OCR) trong cùng một câu trả lời.

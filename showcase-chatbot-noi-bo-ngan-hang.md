@@ -41,40 +41,62 @@ Bài toán của ngân hàng không phải "có chatbot", mà là **có một tr
 
 ## 3. Phương án kỹ thuật: bốn năng lực lõi
 
-Kiến trúc của chúng tôi được thiết kế quanh đúng bốn từ khóa trong yêu cầu: **truy vấn — đa nguồn — suy luận — tính toán**.
+### 3.0 Tại sao "truy vấn đa nguồn + suy luận" là bài toán thực sự khó
+
+Google tìm kiếm được mọi thứ trên internet — nhưng AI doanh nghiệp lại khó khăn khi tra cứu dữ liệu đa nguồn nội bộ. Không phải vì thiếu mô hình ngôn ngữ, mà vì bài toán khác hoàn toàn bản chất:
+
+| | Google / internet | Dữ liệu nội bộ ngân hàng |
+|---|---|---|
+| **Dữ liệu** | Công khai, đã được crawl và index sẵn | Phân tán trên DWH, CSDL nghiệp vụ, kho văn bản, file scan — chưa từng được tổ chức cho AI |
+| **Ngôn ngữ** | Từ khóa đồng nhất | Thuật ngữ nội bộ, viết tắt, tên bảng, mã phòng ban — không ai gán nhãn cho AI |
+| **Quyền** | Ai cũng xem được | Phân quyền theo chức danh, theo phòng ban, theo đối tượng khách hàng — AI phải tôn trọng đúng |
+| **Thời điểm** | Trang web cũ là trang web cũ | Quy định thay đổi theo thời gian — AI phải biết "hiện hành" là phiên bản nào |
+| **Tính toán** | Không có | Số liệu phải tính chính xác tuyệt đối — không được "gần đúng" |
+| **Trách nhiệm** | Không ai kiểm tra | Mọi câu trả lời phải truy vết được nguồn, phục vụ kiểm toán |
+
+**Bài toán không phải "tìm kiếm" — mà là "hiểu đúng ngữ cảnh doanh nghiệp, truy xuất đúng nguồn, tính đúng, và chứng minh được."** Đây là lý do hầu hết các thử nghiệm AI trong ngân hàng dừng lại ở demo — vì họ giải quyết phần dễ (chat), không giải quyết phần khó (truy vấn đa nguồn có kiểm soát + suy luận có căn cứ).
+
+Kiến trúc của chúng tôi được thiết kế quanh đúng bốn từ khóa trong yêu cầu: **truy vấn — đa nguồn — suy luận — tính toán**. Mỗi năng lực đều đã được triển khai và vận hành thật — không phải thiết kế trên giấy.
 
 ### 3.1 TRUY VẤN — hỏi dữ liệu bằng tiếng Việt, qua cổng có kiểm soát
 
-- Cán bộ hỏi bằng câu tự nhiên: *"Liệt kê các khoản vay SME đến hạn trong 30 ngày tới theo chi nhánh."*
-- Agent AI phân tích câu hỏi, tự chọn nguồn dữ liệu và cách truy vấn — nhưng **không được tự do viết SQL tùy ý** trên nguồn nhạy cảm: truy vấn đi qua lớp kiểm soát với tham số hóa, chỉ-đọc, giới hạn số dòng, và gắn nhãn **thời điểm dữ liệu** trên kết quả.
-- Kết quả trả về dạng bảng/biểu đồ ngay trong chat.
-- Mỗi nguồn dữ liệu được **đăng ký tường minh** (đọc được gì, ai được đọc) — như một danh mục, không phải kết nối tự do.
+**Bài toán con:** Cán bộ ngân hàng không biết SQL, không biết tên bảng, không biết nguồn dữ liệu nằm ở đâu. Họ chỉ biết câu hỏi nghiệp vụ. Nhưng cho phép AI tự do viết SQL trên CSDL ngân hàng là không thể chấp nhận — một lỗi logic có thể lộ dữ liệu nhạy cảm hoặc trả về kết quả sai.
+
+**Giải pháp:** Cán bộ hỏi bằng câu tự nhiên: *"Liệt kê các khoản vay SME đến hạn trong 30 ngày tới theo chi nhánh."* Agent AI phân tích câu hỏi, tự chọn nguồn dữ liệu và cách truy vấn — nhưng **không được tự do viết SQL tùy ý** trên nguồn nhạy cảm. Truy vấn đi qua lớp kiểm soát với tham số hóa, chỉ-đọc, giới hạn số dòng, và gắn nhãn **thời điểm dữ liệu** trên kết quả. Mỗi nguồn dữ liệu được **đăng ký tường minh** (đọc được gì, ai được đọc) — như một danh mục, không phải kết nối tự do.
+
+**Đã triển khai thật:** EA đã vận hành module truy vấn dữ liệu có kiểm soát với phân quyền theo chức danh — giao dịch viên chỉ thấy dữ liệu chi nhánh của mình, trưởng phòng thấy được tổng hợp nhiều chi nhánh. PowerUp cung cấp lớp đăng ký nguồn dữ liệu với phân quyền chi tiết tới từng bảng, từng thư mục.
 
 ### 3.2 ĐA NGUỒN — dữ liệu, văn bản, hệ thống trong cùng một câu trả lời
 
-- **Tri thức cấu trúc** (bảng số liệu, CSDL nghiệp vụ, DWH) và **tri thức phi cấu trúc** (thông tư, quy định, quy trình, biểu phí, file scan) nằm chung một nền tảng dữ liệu–tri thức.
-- Một câu trả lời có thể **đồng thời** kéo số liệu thực tế và trích dẫn điều khoản văn bản — cùng truy vết được nguồn.
-- Nạp tài liệu đa định dạng (PDF, Word, **ảnh scan**) với OCR tự động; nhận diện cấu trúc bảng biểu trong tài liệu — đúng đặc thù văn bản ngân hàng (biểu phí, bảng điều kiện).
-- Truy xuất lai (hybrid search) + xếp hạng lại (reranker): tìm đúng đoạn văn bản cần thiết trong kho hàng nghìn trang.
+**Bài toán con:** Câu hỏi của ngân hàng hiếm khi chỉ cần một nguồn. *"So sánh dư nợ theo ngành 3 chi nhánh Q3 với Q2, đối chiếu trần tăng trưởng tín dụng hiện hành"* — cần số liệu từ DWH (cấu trúc) VÀ văn bản quy định (phi cấu trúc) CÙNG LÚC. Hầu hết các giải pháp RAG chỉ giải quyết được một loại dữ liệu — hoặc vector search trên văn bản, hoặc SQL trên bảng. Không có giải pháp nào ghép chúng lại một cách có kiểm soát.
+
+**Giải pháp:** Tri thức cấu trúc (bảng số liệu, CSDL nghiệp vụ, DWH) và tri thức phi cấu trúc (thông tư, quy định, quy trình, biểu phí, file scan) nằm chung một nền tảng dữ liệu–tri thức. Một câu trả lời có thể **đồng thời** kéo số liệu thực tế và trích dẫn điều khoản văn bản — cùng truy vết được nguồn. Nạp tài liệu đa định dạng (PDF, Word, **ảnh scan**) với OCR tự động; nhận diện cấu trúc bảng biểu trong tài liệu — đúng đặc thù văn bản ngân hàng (biểu phí, bảng điều kiện). Truy xuất lai (hybrid search) + xếp hạng lại (reranker): tìm đúng đoạn văn bản cần thiết trong kho hàng nghìn trang.
+
+**Đã triển khai thật:** PowerUp đã xây dựng và vận hành pipeline tri thức sâu với hybrid search (vector + keyword) + reranker model + OCR GPU — xử lý được văn bản ngân hàng đặc thù như biểu phí dạng bảng, thông tư dạng scan. EA tích hợp pipeline này qua cổng MCP, cho phép agent truy xuất cả dữ liệu cấu trúc và phi cấu trúc trong cùng một luồng hội thoại.
 
 ### 3.3 SUY LUẬN — agent tự lập kế hoạch, kết luận luôn có căn cứ
 
-- Mỗi câu hỏi được agent **phân tích và lập kế hoạch**: cần nguồn nào, gọi công cụ nào theo thứ tự nào, thiếu dữ liệu thì hỏi lại hay báo thiếu — không phải cây luồng cứng định nghĩa trước.
-- Kết luận trong câu trả lời **bắt buộc gắn căn cứ**: số liệu từ nguồn nào, văn bản số hiệu nào điều khoản nào. Không có căn cứ → câu trả lời từ chối có kiểm soát, không bịa.
-- Bộ nhớ hội thoại theo từng cán bộ: trợ lý nhớ ngữ cảnh làm việc lâu dài, hỗ trợ câu hỏi nối tiếp tự nhiên.
+**Bài toán con:** Câu hỏi phức tạp không có câu trả lời sẵn trong một tài liệu. *"Hồ sơ vay của khách hàng X còn thiếu chứng từ gì so với quy định cho vay trung dài hạn?"* — cần truy vấn hệ thống hồ sơ, truy xuất danh mục chứng từ bắt buộc, rồi đối chiếu và lập kế hoạch hành động. Không phải cây luồng cứng định nghĩa trước — mà là suy luận động dựa trên ngữ cảnh câu hỏi.
+
+**Giải pháp:** Mỗi câu hỏi được agent **phân tích và lập kế hoạch**: cần nguồn nào, gọi công cụ nào theo thứ tự nào, thiếu dữ liệu thì hỏi lại hay báo thiếu. Kết luận trong câu trả lời **bắt buộc gắn căn cứ**: số liệu từ nguồn nào, văn bản số hiệu nào điều khoản nào. Không có căn cứ → câu trả lời từ chối có kiểm soát, không bịa. Bộ nhớ hội thoại theo từng cán bộ: trợ lý nhớ ngữ cảnh làm việc lâu dài, hỗ trợ câu hỏi nối tiếp tự nhiên.
+
+**Đã triển khai thật:** EA đã vận hành agent runtime tự điều phối với 13 nhóm năng lực / 43 công cụ — agent tự nhận diện ý định, tự chọn công cụ phù hợp, tự lập kế hoạch truy vấn nhiều nguồn. Hệ thống audit ghi nhận toàn bộ chuỗi suy luận: từ câu hỏi → kế hoạch → công cụ gọi → kết quả trung gian → câu trả lời cuối. Đây là điều kiện tiên quyết để ngân hàng chấp nhận AI trong môi trường có kiểm toán.
 
 ### 3.4 TÍNH TOÁN — engine nghiệp vụ tách biệt LLM
 
-- Mọi phép tính nghiệp vụ (so sánh kỳ, tỷ lệ, ngưỡng, quy đổi) chạy ở **engine tách biệt với mô hình ngôn ngữ** — chính xác tuyệt đối, không "ảo giác số liệu".
-- LLM chỉ điều phối và giải thích kết quả. Đây là nguyên tắc thiết kế, không phải tùy chọn cấu hình.
+**Bài toán con:** LLM "đoán" số — đôi khi đúng, đôi khi sai lặng lẩ. Trong ngân hàng, một con số sai trong báo cáo dư nợ có thể dẫn đến quyết định tín dụng sai. Không thể chấp nhận "gần đúng" khi nói về tiền.
+
+**Giải pháp:** Mọi phép tính nghiệp vụ (so sánh kỳ, tỷ lệ, ngưỡng, quy đổi) chạy ở **engine tách biệt với mô hình ngôn ngữ** — chính xác tuyệt đối, không "ảo giác số liệu". LLM chỉ điều phối và giải thích kết quả. Đây là nguyên tắc thiết kế, không phải tùy chọn cấu hình.
+
+**Đã triển khai thật:** PowerUp đã xây dựng engine đối soát và so khớp giao dịch ngân hàng (788 dòng mã đối soát đã chạy thật với khách hàng) — đây là bài toán "tiền bạc" thật, không chỉ chat. Engine tính toán tách biệt đảm bảo mọi con số trong câu trả lời đều kiểm chứng được bằng cách tái tính từ dữ liệu gốc.
 
 ### 3.5 An toàn xuyên suốt — nền móng, không phải lớp vá
 
-- **Fail-closed:** AI mặc định không được làm gì; từng nhóm năng lực được cấp phép tường minh; công cụ bị tắt trả lời y như "không tồn tại".
-- **Cổng kiểm soát độc lập** đứng giữa AI và dữ liệu — chặn cả khi AI bị thao túng cố gồng ngoài phạm vi.
-- **Phân tầng theo chức danh:** giao dịch viên, trưởng phòng, lãnh đạo — mỗi cấp thấy đúng công cụ và dữ liệu của mình, kiểm tra ở lớp thực thi chứ không chỉ ẩn giao diện.
-- **Audit + tracing toàn luồng:** truy vết được từng câu trả lời về đúng nguồn dữ liệu và văn bản; phục vụ kiểm toán nội bộ và cơ quan quản lý.
-- **On-premise hoàn toàn; model không khóa vendor** — mô hình AI trong nước hoặc tự vận hành, thay thế được mà không sửa ứng dụng.
+**Bài toán con:** Ngân hàng không thể chấp nhận AI "tự do" — mọi hành động phải có kiểm soát, mọi câu trả lời phải truy vết được, mọi quyền truy cập phải phân tầng. Đây không phải tính năng thêm vào sau — mà là điều kiện tiên quyết để AI được phép chạy trong ngân hàng.
+
+**Giải pháp:** **Fail-closed:** AI mặc định không được làm gì; từng nhóm năng lực được cấp phép tường minh; công cụ bị tắt trả lời y như "không tồn tại". **Cổng kiểm soát độc lập** đứng giữa AI và dữ liệu — chặn cả khi AI bị thao túng cố gồng ngoài phạm vi. **Phân tầng theo chức danh:** giao dịch viên, trưởng phòng, lãnh đạo — mỗi cấp thấy đúng công cụ và dữ liệu của mình, kiểm tra ở lớp thực thi chứ không chỉ ẩn giao diện. **Audit + tracing toàn luồng:** truy vết được từng câu trả lời về đúng nguồn dữ liệu và văn bản; phục vụ kiểm toán nội bộ và cơ quan quản lý. **On-premise hoàn toàn; model không khóa vendor** — mô hình AI trong nước hoặc tự vận hành, thay thế được mà không sửa ứng dụng.
+
+**Đã triển khai thật:** EA đã vận hành cổng kiểm soát fail-closed trong production — mặc định đóng, cấp phép từng nhóm năng lực, chặn ở lớp thực thi. Hệ thống audit log + tracing toàn luồng đã chạy qua nhiều chu kỳ release với khách hàng doanh nghiệp thật. Đây là điểm ngân hàng kiểm tra kỹ nhất — và là điểm chúng tôi mạnh nhất.
 
 ---
 
