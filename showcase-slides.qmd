@@ -1,0 +1,115 @@
+---
+title: "Chatbot AI Nội bộ cho Ngân hàng"
+subtitle: "Từ bài toán đến giải pháp — Nền tảng EA & PowerUp"
+author: "BSM Super AI"
+date: "12/10/2026"
+format:
+  pptx:
+    slide-level: 2
+---
+
+## Bài toán — những câu hỏi "khó" hàng ngày
+
+> *"So sánh dư nợ tín dụng theo ngành của 3 chi nhánh quý này với quý trước, và đối chiếu với trần tăng trưởng tín dụng theo quy định hiện hành."*
+
+> *"Hồ sơ cho vay doanh nghiệp nhỏ cần đủ chứng từ gì theo quy định mới nhất? Hồ sơ khách hàng X đang thiếu gì?"*
+
+> *"Tổng hợp tỷ lệ nợ xấu theo nhóm ngành 6 tháng gần nhất, lập biểu đồ gửi Ban điều hành."*
+
+Không nằm trong một hệ thống nào cả — phải mở nhiều hệ thống, tự ghép bằng Excel, mất từ vài chục phút đến vài giờ.
+
+## Vì sao chatbot "thông thường" không giải được
+
+- **Dữ liệu thật của ngân hàng?** Không truy cập được.
+- **Quy định hiện hành?** Không biết văn bản nội bộ — dễ trả lời theo dữ liệu quá khứ.
+- **Tính toán chính xác?** LLM "đoán" số — sai lặng lẽ.
+- **Phân quyền & audit?** Không có — ai hỏi cũng nhận cùng câu trả lời.
+- **On-premise?** Cloud công cộng — không thể chấp nhận với dữ liệu ngân hàng.
+
+**Bài toán không phải "có chatbot" — mà là có một trợ lý biết đọc dữ liệu và quy định của chính ngân hàng, tính toán chính xác, đúng phạm vi được phép — và chứng minh được điều đó.**
+
+## Giải pháp — bốn năng lực lõi
+
+- **TRUY VẤN** — hỏi dữ liệu bằng tiếng Việt, qua cổng có kiểm soát: chỉ-đọc, giới hạn kết quả, gắn thời điểm dữ liệu.
+- **ĐA NGUỒN** — số liệu (DWH, CSDL nghiệp vụ) và văn bản (thông tư, quy định, file scan + OCR) trong cùng một câu trả lời.
+- **SUY LUẬN** — agent tự lập kế hoạch gọi nguồn theo thứ tự; kết luận bắt buộc gắn căn cứ, không bịa.
+- **TÍNH TOÁN** — engine nghiệp vụ tách biệt LLM: chính xác tuyệt đối, không "ảo giác số liệu".
+
+## An toàn là thiết kế gốc — không phải lớp vá
+
+- **Fail-closed:** AI mặc định không được làm gì; mỗi nhóm năng lực được cấp phép tường minh.
+- **Cổng kiểm soát độc lập** giữa AI và dữ liệu — chặn cả khi AI bị thao túng.
+- **Phân tầng theo chức danh:** giao dịch viên / trưởng phòng / lãnh đạo — enforce ở lớp thực thi, không chỉ ẩn giao diện.
+- **Audit + tracing toàn luồng:** truy vết từng câu trả lời về nguồn.
+- **On-premise hoàn toàn; model không khóa vendor** — dịch vụ AI trong nước hoặc self-host.
+
+## Output: hai sản phẩm đã có thật, đang chạy thật
+
+**Enterprise Assistant (EA) — "bộ não" & mặt tiền**
+
+- Agent runtime tự điều phối — vận hành 13 nhóm năng lực / 43 công cụ
+- Cổng kiểm soát fail-closed — chặn ở lớp thực thi
+- Kho tri thức tự quản: phòng ban tự nạp tài liệu, OCR file scan
+- Hỏi dữ liệu có kiểm soát; phân quyền theo chức danh; audit + tracing
+
+## PowerUp — "kho dữ liệu, tri thức" & engine
+
+**PowerUp — nền tảng dữ liệu & phân tích AI**
+
+- Quản trị dữ liệu phân quyền chi tiết tới từng thư mục, từng bảng
+- Pipeline tri thức sâu: hybrid search + reranker + OCR (GPU), nhận diện bảng biểu trong tài liệu
+- **Engine đối soát & so khớp giao dịch ngân hàng — đã chạy thật với khách hàng**
+- API chuẩn ngành (OpenAI-compatible) — kênh tích hợp đã chứng minh
+- Web người dùng · Web quản trị · Mobile
+
+## Hai sản phẩm — một nền tảng
+
+- **EA là não và mặt tiền:** nơi cán bộ hỏi, nơi kiểm soát quyền, nơi audit.
+- **PowerUp là kho và tay:** nơi giữ dữ liệu có quản trị, nơi tri thức truy xuất chính xác, nơi tính toán diễn ra.
+- Cầu nối chuẩn mở (MCP) giữa hai hệ **đã vận hành thật** — không phải thiết kế trên giấy.
+
+Kết quả: **một mô hình an toàn, một nhật ký kiểm toán, một đội vận hành** — cho cả ba giải pháp AI của ngân hàng sau này.
+
+## Showcase — bốn kịch bản trực tiếp
+
+1. **Truy vấn đa nguồn + đối chiếu quy định** — bảng số liệu 2 kỳ + trích dẫn văn bản + kết luận so ngưỡng.
+2. **Tri thức quy trình có trích dẫn** — danh sách chứng từ theo quy định *còn hiệu lực*, kèm số hiệu văn bản.
+3. **Suy luận tình huống trên hồ sơ** — hồ sơ khách X còn thiếu chứng từ gì, căn cứ từng mục.
+4. **Báo cáo ad-hoc cho lãnh đạo** — biểu đồ tỷ lệ nợ xấu 6 tháng, trong vài phút thay vì vài ngày.
+
+## Ví dụ trực tiếp — Kịch bản 1
+
+**Hỏi:** *"So sánh dư nợ theo ngành 3 chi nhánh Q3 với Q2, đối chiếu trần tăng trưởng tín dụng hiện hành."*
+
+**Hệ thống làm gì:**
+
+1. Truy vấn DWH — số liệu 2 kỳ
+2. Truy xuất văn bản trần tăng trưởng — đúng phiên bản còn hiệu lực
+3. Engine tính chênh lệch, so ngưỡng
+4. Tổng hợp bảng + nhận xét
+
+**Trước đây:** mở 2–3 hệ thống + tìm văn bản + Excel — hàng chục phút đến vài giờ.
+
+## Vì sao là chúng tôi
+
+1. **Đã chạy thật** — hai nền tảng vận hành production với khách hàng doanh nghiệp; engine đối soát giao dịch là bài toán "tiền bạc" thật, không chỉ chat.
+2. **An toàn là thiết kế gốc** — fail-closed, cổng kiểm soát, phân quyền lớp thực thi, audit: đã enforce thật.
+3. **Không khóa vendor** — dữ liệu xuất được, model thay được, chuẩn mở MCP.
+4. **On-premise đúng chuẩn ngân hàng** — 1 triển khai 1 ngân hàng, sổ tay vận hành đã chuẩn hóa.
+5. **Con đường tăng trưởng rõ** — cùng nền tảng mở rộng sang trợ lý khách hàng và AI kiểm soát quy trình.
+
+## Đề xuất: POC 8 tuần
+
+- **Tuần 1–2** — Chốt phạm vi: 2–3 nguồn dữ liệu + nhóm tài liệu quy định; benchmark model tiếng Việt tài chính; hạ tầng pilot on-prem.
+- **Tuần 3–6** — Triển khai: nạp kho quy định (OCR thật), kết nối dữ liệu read-only, phân quyền theo chức danh, audit + tracing.
+- **Tuần 7–8** — UAT với phòng ban đầu tiên, đo trên bộ câu hỏi vàng.
+- **Tiêu chí nghiệm thu: ≥95% câu trả lời có nguồn đúng.**
+- **Sau POC** — Kế hoạch mở rộng toàn lực lượng (3–6 tháng).
+
+## Kết luận
+
+**Chatbot AI nội bộ của ngân hàng đòi hỏi một nền tảng AI doanh nghiệp — không phải một chatbot.**
+
+Nền tảng EA + PowerUp: đã có thật, đã chạy thật, đã nối thông với nhau, với toàn bộ cơ chế an toàn ngân hàng yêu cầu.
+
+**Live demo — 4 kịch bản showcase, ngay tại buổi làm việc.**
