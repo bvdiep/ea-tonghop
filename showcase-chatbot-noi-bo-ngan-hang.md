@@ -1,6 +1,7 @@
 # Product Showcase
 # Chatbot AI Nội bộ cho Ngân hàng — từ bài toán đến giải pháp
 
+> **Người viết:** Hạ Vy
 > **Loại:** Pitch / showcase sản phẩm gửi khách hàng
 > **Ngày:** 12/10/2026
 > **Sản phẩm giới thiệu:** Enterprise Assistant (EA) & PowerUp — hai nền tảng AI doanh nghiệp đã triển khai thật
