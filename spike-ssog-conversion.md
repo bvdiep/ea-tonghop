@@ -151,6 +151,31 @@ SOG (k-means palette + WebP encode cho từng chunk). So với công cụ browse
 cấu hình mạnh thì serverless L4 xử lý ổn định file 4.5M splats; suy biến tuyến tính với
 file lớn hơn vẫn nằm gọn trong timeout 24h của Modal.
 
+### 8. Vấn đề "superspl.at/editor không lên dữ liệu" — đã tìm nguyên nhân (20/10/2026)
+
+Triệu chứng: kéo thả file `Merger.ssog` vào https://superspl.at/editor → không hiện dữ liệu.
+
+Nguyên nhân (đọc source chính thức playcanvas/supersplat, src/file-handler.ts + drop-handler.ts):
+- Editor KHÔNG hỗ trợ import file `.zip`/`.ssog`. Danh sách import chính thức:
+  `.ssproj, .ply, .splat, .sog, .webp, images.txt, .json, .ksplat, .spz` và container
+  `meta.json`/`lod-meta.json`/`.lcc`/`.lcc2`. Không có `.zip` — file lạ rơi vào nhánh
+  "Unrecognized file type".
+- Cơ chế `isSog()` chỉ nhận diện khi kéo thả/chọn THƯ MỤC giải nén chứa đúng 1
+  `lod-meta.json` (hoặc `meta.json`); nó không đọc zip.
+- File `.ssog`/zip là format cho luồng UPLOAD (superspl.at Upload / API sourceFormat "ssog")
+  hoặc lưu trữ/transfer qua CLI — không phải format import editor.
+
+Cách xem đúng trong editor: giải nén `Merger.ssog` rồi kéo thả CẢ THƯ MỤC (chứa
+`lod-meta.json` + các thư mục chunk) vào editor. Đã tạo sẵn thư mục giải nén:
+`/home/diep/work/vanmieu/Merger_ssog/`.
+
+Xác minh dữ liệu KHÔNG có vấn đề (nếu không import được nữa mới đi vào file):
+- Roundtrip: `--select-lod 0` trích từ bundle ra PLY được đúng 4,464,514 gaussians (1.05GB,
+  trùng byte-level schema với file gốc).
+- Chunk `meta.json` version 2 — editor runtime chỉ chập version 2 (đọc JS bundle editor);
+  `lod-meta.json` version 1 — đúng chuẩn editor.
+- Cấu trúc zip: 18 chunks, mọi filename trong `lod-meta.json` đều tồn tại, không missing.
+
 ## Khuyến nghị cho build thật
 
 1. Deploy modal_app.py chạy probe GPU trước (30 phút).
