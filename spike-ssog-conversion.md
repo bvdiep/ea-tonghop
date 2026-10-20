@@ -74,18 +74,36 @@ Chi phí ước tính mỗi job:
 Kết luận kiến trúc đề xuất: hybrid — CPU path cho file nhỏ/vừa (đã chắc chắn chạy), GPU path
 cho file lớn NẾU probe Vulkan trên Modal thành công (mục dưới).
 
-### 5. Rủi ro GPU path trên Modal (chưa giải quyết — cần probe)
+### 5. Rủi ro GPU path trên Modal (đã probe THÀNH CÔNG 20/10/2026)
 
-GPU của splat-transform đi qua WebGPU → Vulkan, KHÔNG phải CUDA. Để chạy trên container GPU:
+Kết quả probe thật trên Modal workspace `tech-62960` (function GPU T4, image
+`nvidia/cuda:12.8.1-runtime-ubuntu22.04` + `NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility`
++ vulkan-tools/libgl1/libxext6 + Node 22 + splat-transform):
 
-- Host của Modal phải có NVIDIA driver expose Vulkan ICD. Cảnh báo từ docs PlayCanvas: trên AWS
-  GPU instances driver mặc định là Tesla compute-only (không có Vulkan), cần GRID driver ≥19.2.
-  Modal không công bố cấu hình driver host → đây là ẩn số lớn nhất, không kiểm soát được từ image.
-- Image cần: CUDA base + `NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility` (chữ `graphics`
-  bắt buộc để toolkit mount ICD) + `vulkan-tools libgl1 libglvnd0 libglx0 libegl1 libxext6`.
-- Kiểm chứng nhanh: `splat-transform --list-gpus` trong container phải thấy adapter NVIDIA;
-  `vulkaninfo --summary` phải thấy GPU0 NVIDIA. RunPod đã có người chạy được WebGPU headless
-  (cần libnvidia-gl đúng version driver + Vulkan loader 1.4+); Modal chưa thấy ai công bố.
+- Host Modal expose Vulkan đầy đủ: `vulkaninfo` thấy Tesla T4 với NVIDIA proprietary driver
+  610.57.04, Vulkan 1.4.341 (không phải cảnh báo Tesla-compute-only của AWS).
+- `splat-transform --list-gpus` trong container: `[0] Tesla T4`, `[1] llvmpipe` → Dawn/WebGPU
+  nhận GPU. VERDICT: GPU VIABLE trên Modal.
+- Lưu ý image: bắt buộc cài `curl ca-certificates gnupg` TRƯỚC khi chạy nodesource setup,
+  nếu không sẽ rơi về Node 12 của Ubuntu (không có npm).
+
+### 5b. Benchmark end-to-end TRÊN MODAL (500k splats SH3, 4 LOD, cùng pipeline)
+
+| Môi trường | Decimate | Bundle SOG | Zip | Tổng | Chi phí/job ước tính |
+|---|---|---|---|---|---|
+| Modal CPU (4 core, 8GiB) | 62.1s | 49.3s | 0.1s | 111.5s | ~$0.008 |
+| Modal GPU T4 | 28.3s | 392.2s | 0.1s | 420.6s | ~$0.069 |
+| Modal GPU L4 | 25.7s | 60.5s | 0.1s | 86.4s | ~$0.025 |
+| Local 4-core (tham chiếu) | ~56s | ~72s | — | ~128s | — |
+
+Phát hiện quan trọng:
+- T4 là BẤT LỢI cho workload này: bước bundle SOG (k-means + WebP encode qua WebGPU) chậm
+  gấp 6.5 lần L4 → T4 vừa chậm vừa đắt hơn ($0.069 vs $0.025). Nếu dùng GPU, dùng L4 trở lên,
+  tránh T4.
+- Với file nhỏ (≤1-2M splats): CPU vẫn rẻ hơn ~3 lần, chỉ chậm hơn ~30% so với L4.
+- Với file lớn: GPU L4 thắng rõ về thời gian; chi phí gần ngang hoặc rẻ hơn CPU khi tăng cores.
+- Output `.ssog` từ Modal (cả CPU và GPU) đã được tải về và kiểm chứng: zip đúng cấu trúc
+  (`lod-meta.json` root + chunk folders), `--info` đọc lại đúng 4 LOD 500k/250k/125k/50k.
 
 ### 6. Đã tạo sẵn
 
@@ -93,12 +111,14 @@ GPU của splat-transform đi qua WebGPU → Vulkan, KHÔNG phải CUDA. Để c
   splat-transform --list-gpus trên Modal GPU T4, tự in VERDICT. Chạy: `modal run modal_app.py`.
 - Bộ lệnh pipeline + gen PLY test: /tmp/ssog-spike/.
 
-## Verdict: PARTIAL → VALIDATED (CPU), PARTIAL (GPU)
+## Verdict: VALIDATED (cả CPU và GPU trên Modal)
 
-- CPU-only trên Modal: khả thi cao, đã chứng minh toàn pipeline chạy trong container CPU thuần.
-  Phù hợp file ≤ vài triệu splats; chi phí thấp, không rủi ro driver.
-- GPU trên Modal: tiềm năng cho file lớn (rẻ + nhanh hơn nhiều) nhưng phụ thuộc host driver
-  Vulkan của Modal — phải chạy probe thật trước khi cam kết.
+- CPU-only trên Modal: VALIDATED. Full pipeline chạy, output .ssog hợp lệ. Phù hợp file
+  ≤ vài triệu splats (rẻ nhất, đơn giản nhất).
+- GPU trên Modal: VALIDATED. Vulkan + WebGPU chạy được; L4 nhanh nhất trong các card đã test
+  (86.4s cho 500k). TRÁNH T4 (bundle chậm bất thường 392s).
+- Khuyến nghị cuối: dùng GPU L4 làm default cho mọi kích thước file (đơn giản 1 code path,
+  thời gian tốt); hoặc hybrid CPU(<2M)/L4(≥2M) nếu tối ưu chi phí triệt để.
 - Điểm chưa test: file thực tế lớn (10GB+), `--decimate-adaptive` (tốn RAM hơn, cần cho cảnh
   có sky), zip64 >4GB, tính thời gian chính xác trên Modal (IO network + cold start).
 
