@@ -122,6 +122,35 @@ Phát hiện quan trọng:
 - Điểm chưa test: file thực tế lớn (10GB+), `--decimate-adaptive` (tốn RAM hơn, cần cho cảnh
   có sky), zip64 >4GB, tính thời gian chính xác trên Modal (IO network + cold start).
 
+### 7. Chạy thật với file production (20/10/2026)
+
+File: `/home/diep/work/vanmieu/Merger.ply` — 1.05GB, 4,464,514 gaussians, SH 3 bands.
+
+Chạy trên Modal L4 (modal_convert_real.py, 8 cores, 16GiB RAM, timeout 1h):
+
+| Bước | Thời gian |
+|---|---|
+| Upload 1.05GB lên Modal volume | ~2-3 phút |
+| decimate 50% | 67.0s |
+| decimate 25% | 72.1s |
+| decimate 10% | 85.9s |
+| bundle 4 LOD → lod-meta.json | 606.8s |
+| zip .ssog | 6.0s |
+| **Tổng conversion (L4)** | **841.8s (~14 phút)** |
+
+Output: `Merger.ssog` — 157.5MB (nén 6.7x so với PLY gốc), 145 entries trong zip
+(lod-meta.json + 4 LOD chunk folders × ~36 files). Đã tải về máy và validate cục bộ:
+`splat-transform --info` đọc lại đúng format lod, 4,464,514 gaussians,
+lod counts 4464514/2232257/1116129/446451, SH 3 bands.
+
+Chi phí ước tính job này trên Modal: L4 14 phút (~$0.19) + 8 cores × 14 phút (~$0.09)
++ 16GiB RAM × 14 phút (~$0.03) ≈ **~$0.31/job** (chưa kể IO).
+
+Quan sát: bundle là bước chiếm ~72% thời gian (606s/842s) — phù hợp chờ đợi của format
+SOG (k-means palette + WebP encode cho từng chunk). So với công cụ browser yêu cầu máy
+cấu hình mạnh thì serverless L4 xử lý ổn định file 4.5M splats; suy biến tuyến tính với
+file lớn hơn vẫn nằm gọn trong timeout 24h của Modal.
+
 ## Khuyến nghị cho build thật
 
 1. Deploy modal_app.py chạy probe GPU trước (30 phút).
