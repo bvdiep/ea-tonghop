@@ -169,6 +169,25 @@ Cách xem đúng trong editor: giải nén `Merger.ssog` rồi kéo thả CẢ T
 `lod-meta.json` + các thư mục chunk) vào editor. Đã tạo sẵn thư mục giải nén:
 `/home/diep/work/vanmieu/Merger_ssog/`.
 
+### 9. File thứ hai từ Google Drive: GiengThienQuang.ply (20/10/2026)
+
+File: `GiengThienQuang.ply` — 2.11GB, 8,954,605 gaussians, SH 3 bands (tải từ Google Drive
+folder bằng gdown).
+
+Vận hành: lần đầu dùng `modal run` bị mất job khi phiên agent bị ngắt (input bị cancel);
+đã chuyển sang pattern chắc chắn hơn: `modal deploy` app + `f.spawn()` input từ entrypoint —
+input chạy hoàn toàn server-side, tiến trình local chỉ poll volume. Conversion chạy thành công.
+
+Output: `GiengThienQuang.ssog` — 322.4MB (nén 6.6x), 265 entries. Validate: CRC zip 100%
+(testzip sạch), `--info` đọc lại đúng 8,954,605 gaussians, lod counts
+8954605/4477303/2238651/895461, SH 3 bands. Đã đặt tại /home/diep/work/vanmieu/
+(GiengThienQuang.ssog + thư mục giải nén GiengThienQuang_ssog/).
+
+Bài học vận hành ghi lại:
+- Job Modal dài (> vài phút) phải chạy qua deploy + spawn, KHÔNG dùng `modal run` thường
+  (ngắt local = mất job, kể cả --detach input vẫn có thể bị cancel khi client disconnect).
+- Download volume đôi khi lỗi CRC ở phần đuôi — luôn testzip sau khi tải, tải lại nếu hỏng.
+
 Xác minh dữ liệu KHÔNG có vấn đề (nếu không import được nữa mới đi vào file):
 - Roundtrip: `--select-lod 0` trích từ bundle ra PLY được đúng 4,464,514 gaussians (1.05GB,
   trùng byte-level schema với file gốc).
