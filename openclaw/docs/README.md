@@ -102,6 +102,54 @@ I'm doing well, thanks for asking!
 | V8 | 5,158 | 87 | + session-level rules |
 | **V9** | **5,116** | **87** | **+ subagent filter** |
 
+## Conversation extraction (v10 → v11)
+
+`group_conversations_assistant.py` (v10) gom message thành conversation nhưng chỉ
+đọc `<sid>.jsonl` + **một** checkpoint, không đọc `.trajectory.jsonl` và archive,
+đồng thời lọc noise **trước khi** bóc metadata Telegram. Hậu quả trên agent
+`assistant`: 662/1.885 (35%) unique user text, chỉ 19/291 session có user message.
+
+`extract_assistant_v11.py` thay thế bằng union-of-sources + dedup theo entry id:
+
+```bash
+python3 openclaw/scripts/extract_assistant_v11.py \
+  --sessions-dir /path/to/agents/assistant/sessions \
+  --output openclaw/output_v10/assistant_conversations_v11
+```
+
+Nguồn dữ liệu:
+
+1. `<sid>.jsonl` — transcript gốc.
+2. `<sid>.jsonl.reset.*` / `.deleted.*` / `.bak-*` — bản archive bị rotate.
+3. `<sid>.checkpoint.<uuid>.jsonl` — **chỉ bản mới nhất theo mtime** (checkpoint
+   là snapshot cộng dồn; các bản cũ là tập con).
+4. `<sid>.trajectory.jsonl` — `prompt.submitted` (user) + `model.completed`
+   (assistant), nguồn duy nhất cho 2.658 session trajectory-only.
+
+Quy tắc chính:
+
+- **Clean trước, filter sau** → message có metadata Telegram / `System (untrusted):`
+  / `[Fri 2026-...]` vẫn giữ được phần text thật.
+- Dedup theo `message.id`; dedup chéo nguồn theo `(role, text)` trong cửa sổ 5 phút.
+- Bỏ tool-call giả dạng text (`read(path=...)`, JSON function call), `<final>`,
+  media-attachment boilerplate, bootstrap/cron/heartbeat/pre-compaction prompt.
+- Session không có user message bị bỏ (dùng `--keep-assistant-only` để giữ).
+- Tách conversation khi gap ≥ 12h (`--gap-hours`), hiển thị GMT+7 (`--tz-offset`).
+
+Output: `NNNN_YYYYMMDD_slug.md`, `_index.md`, `messages.jsonl`,
+`coverage_report.json`.
+
+Kết quả chạy full backup assistant (2026-04-27 → 2026-08-15):
+
+| Metric | v10 | v11 |
+|--------|-----|-----|
+| Conversations | 259 | 304 |
+| User messages | 744 | 2.077 |
+| Assistant messages | 2.099 | 2.055 |
+| Gold unique user texts (per session) | 662/1.885 (35,1%) | **1.882/1.882 (100%)** |
+| Sessions có user message | 19/291 | **291/291** |
+
+
 ## Session JSONL Format
 
 ```jsonl
