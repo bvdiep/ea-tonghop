@@ -13,3 +13,8 @@ coverage/
 # Generated output (large files)
 openclaw/output_v10/
 openclaw/output_v10_html/
+
+# 3DGS output artifacts (PLY quá lớn cho GitHub, giữ ở volume Modal + shared/)
+*.ply
+spike-3dgs-modal/out*/
+spike-3dgs-modal/logs/
