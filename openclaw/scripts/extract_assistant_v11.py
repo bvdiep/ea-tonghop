@@ -64,6 +64,10 @@ CONTEXT_PAT = re.compile(
     r"Conversation context \(untrusted, chronological[^\n]*\n"
     r"(?:#\d+[^\n]*\n?)*"
 )
+EXTERNAL_CONTENT_PAT = re.compile(
+    r"<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>.*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\n?",
+    re.S,
+)
 STARTUP_PAT = re.compile(
     r"^A new session was started via /new or /reset\..*", re.S | re.M
 )
@@ -72,6 +76,8 @@ CONTINUE_PAT = re.compile(r"^Continue the OpenClaw.*$", re.M)
 UTC_PREFIX_PAT = re.compile(
     r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})? UTC\]\s*"
 )
+TELEGRAM_PREFIX_PAT = re.compile(r"^\s*\[Telegram [^\]]+\]\s*")
+
 DATE_PREFIX_PAT = re.compile(
     r"^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) "
     r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})? [^\]]*\]\s*"
@@ -86,7 +92,11 @@ FINAL_TAG_PAT = re.compile(r"</?final>")
 FAILED_TURN_PAT = re.compile(
     r"^\[assistant turn failed before producing content\]\s*"
 )
-MEDIA_LINE_PAT = re.compile(r"^\[media attached:[^\n]*\]\n?", re.M)
+MEDIA_LINE_PAT = re.compile(
+    r"^\[media attached(?: \d+/\d+)?: [^\n]*\]\n?", re.M
+)
+MEDIA_TAG_PAT = re.compile(r"<media:[^>]*>\n?")
+FILE_TAG_PAT = re.compile(r"</?file [^>]*>\n?|</?file>\n?")
 MEDIA_HINT_PAT = re.compile(
     r"^To send an image back,.*?(?:\n\n|\Z)", re.S | re.M
 )
@@ -96,7 +106,7 @@ TOOL_CALL_TEXT_PAT = re.compile(
     r"memory_get|cron|browser|process|nodes)\s*(?:=\s*)?[\(\{].*$",
     re.S | re.I,
 )
-TOOL_JSON_PREFIXES = ('{"type": "function"', '{"type":"function"')
+TOOL_JSON_PREFIXES = ('{"type": "function"}', '{"type":"function"}', '{"name":', '{"type": "function",', '{"type":"function",')
 
 NOISE_EXACT = {"NO_REPLY", "HEARTBEAT_OK", "<|finish|>", "[OpenClaw heartbeat poll]"}
 NOISE_PREFIXES = (
@@ -106,6 +116,7 @@ NOISE_PREFIXES = (
     "[Subagent",
     "[Inter-session",
     "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+    "<<<EXTERNAL_UNTRUSTED_CONTENT",
     "A new session was started",
     "Continue the OpenClaw",
     "Pre-compaction memory flush",
@@ -181,7 +192,10 @@ def clean_user_text(raw: str) -> str:
     """Remove transport/runtime boilerplate but keep the actual user text."""
     text = (raw or "").replace("\r\n", "\n")
     text = MEDIA_LINE_PAT.sub("", text)
+    text = MEDIA_TAG_PAT.sub("", text)
+    text = FILE_TAG_PAT.sub("", text)
     text = MEDIA_HINT_PAT.sub("", text)
+    text = EXTERNAL_CONTENT_PAT.sub("", text)
     while True:
         stripped = WRAPPER_PREFIX_PAT.sub("", text, count=1)
         if stripped == text:
@@ -201,6 +215,7 @@ def clean_user_text(raw: str) -> str:
     text = SYSTEM_PREFIX_PAT.sub("", text)
     text = UTC_PREFIX_PAT.sub("", text)
     text = DATE_PREFIX_PAT.sub("", text)
+    text = TELEGRAM_PREFIX_PAT.sub("", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
@@ -247,8 +262,11 @@ def user_noise_reason(text: str) -> str | None:
 def assistant_noise_reason(text: str) -> str | None:
     if not text:
         return "empty"
-    if text in NOISE_EXACT:
+    stripped = text.strip()
+    if stripped in NOISE_EXACT:
         return "status"
+    if stripped.startswith(NOISE_PREFIXES):
+        return "boilerplate"
     return None
 
 
