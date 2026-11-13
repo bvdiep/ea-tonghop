@@ -88,6 +88,75 @@ def _write_ply(path, means, scales, quats, opacities, sh0, sh_rest):
         f.write(rec.tobytes())
 
 
+def _ckpt_payload(params, opts, strategy_state, step, psnr_log, parser, center):
+    """Gom toan bo trang thai can de resume trung thuc.
+
+    Giu ca optimizer state (Adam moments) va strategy_state (grad2d/count cho
+    DefaultStrategy) — thieu chung thi resume se train lai tu trinh trang thai
+    optimizer rong, chat luong tut so voi chay lien mach.
+    """
+    return {
+        "step": int(step),
+        "params": {k: v.detach().cpu() for k, v in params.items()},
+        "opts": {k: o.state_dict() for k, o in opts.items()},
+        "strategy_state": strategy_state,
+        "psnr_log": psnr_log,
+        "scene_scale": float(parser.scene_scale),
+        "scene_center": center,
+        "n_gaussians": int(params["means"].shape[0]),
+    }
+
+
+def _save_ckpt(ckpt, result_dir: Path, step: int, keep_last: int, log):
+    """Luu ckpt_{step}.pt + con tro ckpt_latest.pt, giu toi da keep_last ban."""
+    result_dir.mkdir(parents=True, exist_ok=True)
+    path = result_dir / f"ckpt_{step}.pt"
+    tmp = path.with_suffix(".pt.tmp")
+    torch.save(ckpt, tmp)
+    tmp.replace(path)  # atomic: khong bao gio de lai ckpt nua ghi
+    (result_dir / "ckpt_latest.pt").write_text(str(path.name))
+    log(f"CKPT saved step={step} n_gaussians={ckpt['n_gaussians']} "
+        f"-> {path.name} ({path.stat().st_size / 1e6:.1f}MB)")
+    olds = sorted(result_dir.glob("ckpt_[0-9]*.pt"),
+                  key=lambda p: int(p.stem.split("_")[1]))
+    for old in olds[:-keep_last] if keep_last > 0 else []:
+        old.unlink(missing_ok=True)
+        log(f"CKPT pruned {old.name}")
+    return path
+
+
+def _find_resume(result_dir: Path, max_steps: int):
+    """Tim ckpt moi nhat con dung duoc. Tra ve (ckpt_dict|None, path|None)."""
+    if not result_dir.exists():
+        return None, None
+    cands = sorted(result_dir.glob("ckpt_[0-9]*.pt"),
+                   key=lambda p: int(p.stem.split("_")[1]), reverse=True)
+    for p in cands:
+        try:
+            ck = torch.load(p, map_location="cpu", weights_only=False)
+        except Exception:
+            continue
+        if ck.get("step", 0) >= max_steps:
+            continue  # da xong roi, khong resume nua
+        return ck, p
+    return None, None
+
+
+def _write_metrics(result_dir: Path, rec: dict):
+    """Append 1 ban ghi vao metrics.json (giu lich su day du, khong ghi de)."""
+    path = result_dir / "metrics.json"
+    hist = []
+    if path.exists():
+        try:
+            hist = json.loads(path.read_text())
+        except Exception:
+            hist = []
+    hist.append(rec)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(hist, indent=2))
+    tmp.replace(path)
+
+
 def train(
     data_dir: str,
     result_dir: "str | Path",
@@ -95,17 +164,20 @@ def train(
     factor: int = 1,
     eval_every: int = 500,
     save_ply: bool = True,
-    ply_steps: tuple = (),
     white_background: bool = False,
+    ckpt_every: int = 1000,
+    resume: bool = True,
+    keep_last_ckpts: int = 2,
 ):
     seed_all()
     device = torch.device("cuda")
     result_dir = Path(result_dir)
     result_dir.mkdir(parents=True, exist_ok=True)
     # Ghi log ra file de theo doi tien do that (subprocess capture_output buffer
-    # hoan toan, khong thay gi cho den khi process ket thuc).
+    # hoan toan, khong thay gi cho den khi process ket thuc). Append + line-buffered
+    # de doc duoc real-time tu volume khi job dang chay (TNG-003).
     log_path = result_dir / "train.log"
-    _log = open(log_path, "w")
+    _log = open(log_path, "a", buffering=1)
 
     def log(msg):
         print(msg, flush=True)
@@ -221,6 +293,45 @@ def train(
     log(f"strategy=DefaultStrategy refine_stop={refine_stop} "
         f"scene_scale={parser.scene_scale:.3f}")
 
+    # ---- resume (TNG-002) -------------------------------------------------
+    # Modal preempt container bat cu luc nao va restart function voi cung input.
+    # Khong resume thi moi lan preempt dot sach GPU-time da train.
+    start_step = 0
+    psnr_log = []
+    if resume:
+        ck, ck_path = _find_resume(result_dir, max_steps)
+        if ck is not None:
+            try:
+                with torch.no_grad():
+                    for k, v in ck["params"].items():
+                        v_dev = v.to(device)
+                        if k in params and params[k].shape == v_dev.shape:
+                            params[k].copy_(v_dev)
+                        else:
+                            params[k] = torch.nn.Parameter(v_dev)
+                            params[k].requires_grad_(True)
+                # VOI DefaultStrategy: densify THAY THE params dict va optimizer.
+                # Optimizer state cu khong match param moi -> KHONG load state_dict.
+                # Tao optimizer moi tu params da load (giong init).
+                for k, o in opts.items():
+                    lr = o.param_groups[0]["lr"]
+                    opts[k] = make_opt(params[k], lr)
+                if isinstance(ck.get("strategy_state"), dict):
+                    strategy_state = ck["strategy_state"]
+                start_step = int(ck["step"])
+                psnr_log = list(ck.get("psnr_log", []))
+                log(f"RESUMED from {ck_path.name if ck_path else '?'} at step={start_step} "
+                    f"n_gaussians={params['means'].shape[0]} (optimizer recreated)")
+            except Exception as e:
+                log(f"RESUME failed ({e}); bat dau lai tu step 0")
+                start_step = 0
+                psnr_log = []
+        else:
+            log("start from scratch")
+    else:
+        log("--resume off; start from scratch")
+    # ----------------------------------------------------------------------
+
     bg = torch.ones(3, device=device) if white_background else torch.zeros(3, device=device)
     # near plane: cat sau khoang 0.01 * scene_scale (san phong gsplat)
     near_plane = 0.01 * float(parser.scene_scale)
@@ -255,8 +366,7 @@ def train(
         return renders[0, ..., :3], alphas[0, ..., 0], img, info
 
     t_train = time.time()
-    psnr_log = []
-    step = 0
+    step = start_step
     while step < max_steps:
         item = train_ds[step % len(train_ds)]
         render, alpha, target, info = render_one(item)
@@ -283,32 +393,49 @@ def train(
                 step=step, info=info, packed=True)
         except RuntimeError as e:
             log(f"WARN step {step}: strategy fail ({e})")
-        if step % eval_every == 0:
+
+        # ---- eval tren VAL set (TNG-003) ---------------------------------
+        # Truoc day eval tren train_ds[0] -> lac quan va chi 1 anh. Val split
+        # do Parser(test_every=8) tao san; eval trung binh toan bo val set.
+        if step % eval_every == 0 or step == max_steps:
             with torch.no_grad():
-                render, alpha, target, _ = render_one(train_ds[0])
-                mse = F.mse_loss(render, target).item()
+                tot_mse, tot_ssim, n_val = 0.0, 0.0, 0
+                for vi in range(len(val_ds)):
+                    vr, va, vt, _ = render_one(val_ds[vi])
+                    tot_mse += F.mse_loss(vr, vt).item()
+                    tot_ssim += _ssim(vr, vt).mean().item()
+                    n_val += 1
+                mse = tot_mse / max(n_val, 1)
                 psnr = -10 * math.log10(max(mse, 1e-10))
+                ssim_val = tot_ssim / max(n_val, 1)
                 psnr_log.append(psnr)
+                n_g = int(params["means"].shape[0])
             log(f"step {step:5d}/{max_steps} loss={loss.item():.5f} "
-                f"psnr={psnr:.2f} n_gaussians={params['means'].shape[0]} "
+                f"psnr_val={psnr:.2f} ssim_val={ssim_val:.4f} "
+                f"n_gaussians={n_g} "
                 f"opacity_mean={torch.sigmoid(params['opacities']).mean().item():.3f}")
+            _write_metrics(result_dir, {
+                "step": step, "psnr_val": round(psnr, 4),
+                "ssim_val": round(ssim_val, 5), "n_gaussians": n_g,
+                "n_val_images": n_val, "train_loss": round(loss.item(), 6),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            })
+        # -------------------------------------------------------------------
+
+        # ---- checkpoint dinh ky (TNG-002) --------------------------------
+        if ckpt_every > 0 and step % ckpt_every == 0 and step < max_steps:
+            _save_ckpt(_ckpt_payload(params, opts, strategy_state, step,
+                                     psnr_log, parser, center),
+                       result_dir, step, keep_last_ckpts, log)
+        # ------------------------------------------------------------------
 
     train_time = time.time() - t_train
     log(f"TRAIN time: {train_time:.1f}s, steps={step}, "
         f"n_gaussians={params['means'].shape[0]}")
 
-    # save checkpoint
-    ckpt = {
-        "means": params["means"].detach().cpu(),
-        "scales": params["scales"].detach().cpu(),
-        "quats": params["quats"].detach().cpu(),
-        "opacities": params["opacities"].detach().cpu(),
-        "sh0": params["sh0"].detach().cpu(),
-        "sh_rest": params["shN"].detach().cpu(),
-        "scene_scale": parser.scene_scale,
-        "scene_center": center,
-    }
-    torch.save(ckpt, result_dir / "ckpt.pt")
+    # ckpt cuoi cung — luon giu de resume lan sau
+    ckpt = _ckpt_payload(params, opts, strategy_state, step, psnr_log, parser, center)
+    _save_ckpt(ckpt, result_dir, step, keep_last_ckpts + 1, log)
 
     ply_path = None
     if save_ply:
@@ -323,10 +450,11 @@ def train(
         "train_time_s": round(train_time, 1),
         "wall_clock_s": round(time.time() - t0, 1),
         "steps": step,
+        "resumed_from": start_step,
         "n_gaussians": int(params["means"].shape[0]),
         "psnr_log": psnr_log,
+        "psnr_val_final": psnr_log[-1] if psnr_log else None,
         "ply": str(ply_path) if ply_path else None,
-        "ckpt": str(result_dir / "ckpt.pt"),
     }
     print("RESULT " + json.dumps(summary, indent=2))
     (result_dir / "train_summary.json").write_text(json.dumps(summary, indent=2))
@@ -341,5 +469,15 @@ if __name__ == "__main__":
     p.add_argument("--max_steps", type=int, default=3000)
     p.add_argument("--factor", type=int, default=1)
     p.add_argument("--eval_every", type=int, default=500)
+    p.add_argument("--ckpt_every", type=int, default=1000,
+                   help="luu checkpoint moi N steps (0 = tat)")
+    p.add_argument("--keep_last_ckpts", type=int, default=2,
+                   help="so ban checkpoint giu lai (cu nhat bi xoa)")
+    p.add_argument("--no_resume", action="store_true",
+                   help="tat resume, train lai tu dau")
+    p.add_argument("--no_ply", action="store_true", help="khong xuat PLY")
     args = p.parse_args()
-    train(args.data_dir, args.result_dir, args.max_steps, args.factor, args.eval_every)
+    train(args.data_dir, args.result_dir, args.max_steps, args.factor,
+          args.eval_every, save_ply=not args.no_ply,
+          ckpt_every=args.ckpt_every, resume=not args.no_resume,
+          keep_last_ckpts=args.keep_last_ckpts)

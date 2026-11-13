@@ -80,6 +80,44 @@ def sh(cmd: list[str], cwd: "str | None" = None, timeout: int = 7200) -> tuple[i
     return p.returncode, "\n".join(out.strip().splitlines()[-25:])
 
 
+def _colmap_cache_dir(subset: int) -> Path:
+    return Path("/vol") / f"colmap_cache_s{subset}"
+
+
+def _colmap_cache_valid(subset: int, work: Path) -> "Path | None":
+    """COLMAP output da co trong volume -> dung lai, bo qua stage extract/match/mapper.
+
+    TNG-002: moi lan Modal preempt va restart, COLMAP chay lai tu dau (~50s voi 40 anh,
+    nhung ~5-12h voi 2500 anh). Cache nay bien restart thanh gan nhu mien phi.
+    """
+    cache = _colmap_cache_dir(subset)
+    ready = cache / "dataset_ready"
+    sparse = ready / "sparse"
+    if not (sparse.is_dir() and (ready / "images").is_dir()):
+        return None
+    n_img = len(list((ready / "images").glob("*")))
+    # dataset_ready trong volume chi co 1 model (undistort chi xuat model chinh)
+    if n_img < 2:
+        return None
+    print(f"COLMAP cache HIT: {n_img} undistorted images in {ready}")
+    # copy sang work de train doc duong dan nhu cu
+    dest = work / "dataset_ready"
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(ready, dest)
+    return dest
+
+
+def _colmap_cache_save(subset: int, work: Path):
+    cache = _colmap_cache_dir(subset)
+    cache.mkdir(parents=True, exist_ok=True)
+    src = work / "dataset_ready"
+    dst = cache / "dataset_ready"
+    if src.is_dir() and not dst.is_dir():
+        shutil.copytree(src, dst)
+        print(f"COLMAP cache SAVED -> {dst}")
+
+
 def run_colmap(work: Path, subset: int) -> dict:
     """COLMAP: extract -> match -> mapper -> undistort. Tra ve ready dir + timings."""
     timings = {}
@@ -166,28 +204,43 @@ def run_colmap(work: Path, subset: int) -> dict:
             "registered": model_size(main_model)}
 
 
-@app.function(image=image, gpu="T4", cpu=2, memory=8192, timeout=6 * 3600,
-              volumes={"/vol": volume})
-def run_pipeline(subset: int = 20, max_steps: int = 3000) -> dict:
-    """COLMAP (da chay duoc) + gsplat simple_trainer mcmc."""
+def _pipeline_impl(subset: int, max_steps: int, resume: bool,
+                   ckpt_every: int, data_factor: int) -> dict:
     t_all = time.time()
     work = Path("/tmp/work")
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
 
-    colmap_res = run_colmap(work, subset)
-    timings = dict(colmap_res["timings"])
-    ready = colmap_res["ready"]
-    if ready is None:
-        result = {"status": "FAIL_MAPPER", "timings": timings}
-        print("RESULT " + json.dumps(result))
-        Path("/vol/result_gsplat.json").write_text(json.dumps(result, indent=2))
-        volume.commit()
-        return result
-    # gsplat: chay simple_trainer.py tu goi thu vien, khong can source tree.
+    timings = {}
+
+    # ---- Stage 1: COLMAP, uu tien cache trong volume ----------------------
+    cached = _colmap_cache_valid(subset, work)
+    if cached is not None:
+        ready = cached
+        timings["colmap_cached"] = 0.0
+    else:
+        colmap_res = run_colmap(work, subset)
+        timings.update(colmap_res["timings"])
+        ready = colmap_res["ready"]
+        if ready is None:
+            result = {"status": "FAIL_MAPPER", "timings": timings}
+            print("RESULT " + json.dumps(result))
+            Path("/vol/result_gsplat.json").write_text(json.dumps(result, indent=2))
+            volume.commit()
+            return result
+        _colmap_cache_save(subset, work)
+        volume.commit()  # commit ngay: neu preempt o stage train, cache van con
+    # ----------------------------------------------------------------------
+
     py = "/usr/local/bin/python3"
-    result_dir = work / "gsplat_out"
+    # TNG-002: result_dir PHAI nam tren volume, khong phai /tmp. Neu de /tmp thi
+    # checkpoint + metrics.json + train.log deu mat khi container restart.
+    # KHONG dua max_steps vao ten thu muc: neu co, lan chay 1000 steps va 2000 steps
+    # ghi vao 2 thu muc khac nhau -> resume khong bao gio tim thay ckpt cu.
+    result_dir = Path("/vol") / f"gsplat_s{subset}_f{data_factor}"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
     t0 = time.time()
     rc, out = sh([
         py, "-c", "import gsplat, torch; "
@@ -203,17 +256,24 @@ def run_pipeline(subset: int = 20, max_steps: int = 3000) -> dict:
         volume.commit()
         return result
 
-    # Train bang script toi gian (khong can simple_trainer.py + deps phai compile)
-    t0 = time.time()
-    rc, out = sh([
+    # ---- Stage 2: train --------------------------------------------------
+    cmd = [
         py, "/root/train_gsplat.py",
         "--data_dir", str(ready),
         "--result_dir", str(result_dir),
         "--max_steps", str(max_steps),
-    ], timeout=5 * 3600)
+        "--factor", str(data_factor),
+        "--ckpt_every", str(ckpt_every),
+    ]
+    if not resume:
+        cmd.append("--no_resume")
+    t0 = time.time()
+    rc, out = sh(cmd, timeout=5 * 3600)
     timings["gsplat_train"] = round(time.time() - t0, 1)
     print(f"TIMING gsplat_train: {timings['gsplat_train']}s rc={rc}")
     print(out)
+    volume.commit()  # day ckpt/metrics/train.log ra volume ngay
+    # ----------------------------------------------------------------------
 
     plys = sorted(result_dir.rglob("*.ply"))
     ply_info = None
@@ -224,19 +284,37 @@ def run_pipeline(subset: int = 20, max_steps: int = 3000) -> dict:
         for line in head.split(b"\n"):
             if line.startswith(b"element vertex"):
                 nverts = int(line.split()[2])
-        ply_info = {"path": str(ply.relative_to(work)),
+        ply_info = {"path": str(ply),
                     "size_mb": round(ply.stat().st_size / 1e6, 1),
                     "vertices": nverts}
 
-    dest = Path("/vol") / f"gsplat_s{subset}_i{max_steps}"
+    # metrics + train summary doc tu volume (khong copy, da o dung cho)
+    metrics, summary = [], {}
+    mpath = result_dir / "metrics.json"
+    if mpath.exists():
+        try:
+            metrics = json.loads(mpath.read_text())
+        except Exception:
+            metrics = []
+    spath = result_dir / "train_summary.json"
+    if spath.exists():
+        try:
+            summary = json.loads(spath.read_text())
+        except Exception:
+            summary = {}
+
+    # PLY copy vao subdir rieng cho de lay; ckpt giu nguyen trong result_dir
+    dest = result_dir / "ply"
     dest.mkdir(parents=True, exist_ok=True)
+    ply_out = None
     if ply_info:
-        # ply_info["path"] co the la duong dan tuong doi -> gop voi work
         src_ply = Path(ply_info["path"])
-        if not src_ply.is_absolute():
-            src_ply = work / src_ply
-        if src_ply.exists():
-            shutil.copy(src_ply, dest / src_ply.name)
+        if src_ply.is_absolute() and src_ply.exists():
+            target = dest / src_ply.name
+            if not target.exists():
+                shutil.copy(src_ply, target)
+            ply_out = str(target)
+            ply_info["path"] = ply_out
 
     result = {
         "status": "OK" if ply_info else "FAIL_TRAIN",
@@ -245,11 +323,41 @@ def run_pipeline(subset: int = 20, max_steps: int = 3000) -> dict:
         "timings": timings,
         "wall_clock_s": round(time.time() - t_all, 1),
         "ply": ply_info,
+        "metrics": metrics,
+        "train_summary": summary,
+        "colmap_cached": bool(cached is not None),
+        "result_dir": str(result_dir),
     }
     print("RESULT " + json.dumps(result, indent=2))
     Path("/vol/result_gsplat.json").write_text(json.dumps(result, indent=2))
     volume.commit()
     return result
+
+
+# TNG-004: profile tai nguyen theo quy mau, khong hard-code mot cau hinh cho moi
+# quy mo. 8GB du cho 40 anh nhung OOM voi 2500 anh (mapper + undistort giu nhieu
+# anh trong RAM). Doc: docs/ke-hoach-3dgs-production.md muc 3.4.
+RESOURCE_PROFILES = {
+    "small":  {"gpu": "T4", "cpu": 2, "memory": 8192},    # <= 100 anh
+    "medium": {"gpu": "L4", "cpu": 8, "memory": 32768},   # 100 - 1000 anh
+    "large":  {"gpu": "L4", "cpu": 16, "memory": 65536},  # > 1000 anh
+}
+
+
+def pick_profile(subset: int) -> dict:
+    if subset <= 100:
+        return RESOURCE_PROFILES["small"]
+    if subset <= 1000:
+        return RESOURCE_PROFILES["medium"]
+    return RESOURCE_PROFILES["large"]
+
+
+@app.function(image=image, gpu="T4", cpu=2, memory=8192, timeout=6 * 3600,
+              volumes={"/vol": volume})
+def run_pipeline(subset: int = 20, max_steps: int = 3000, resume: bool = True,
+                 ckpt_every: int = 1000, data_factor: int = 1) -> dict:
+    """COLMAP (co cache) + gsplat train (co checkpoint/resume). Profile nho."""
+    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor)
 
 
 @app.function(image=image, gpu="T4", cpu=2, memory=8192, timeout=3600,
@@ -313,8 +421,26 @@ def dbg_coords():
     print("rc:", p.returncode)
 
 
+@app.function(image=image, gpu="L4", cpu=8, memory=32768, timeout=4 * 3600,
+              volumes={"/vol": volume})
+def run_pipeline_scaled(subset: int = 500, max_steps: int = 30000,
+                        resume: bool = True, ckpt_every: int = 1000,
+                        data_factor: int = 2) -> dict:
+    """Wrapper cho du lieu vua/lon: tai nguyen theo profile, timeout ngan hon.
+
+    Timeout ngan (4h) co chu dich: function cang dai cang de bi preempt giua chung.
+    Orchestrator goi lai nhieu lan; moi lan resume tu checkpoint (TNG-002).
+    """
+    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor)
+
+
 @app.local_entrypoint()
-def main(subset: int = 20, max_steps: int = 3000):
-    result = modal.Function.from_name("s3dgs-gsplat", "run_pipeline").remote(
-        subset, max_steps)
+def main(subset: int = 20, max_steps: int = 3000, resume: bool = True,
+         ckpt_every: int = 1000, data_factor: int = 1, auto_scale: bool = False):
+    prof = pick_profile(subset)
+    fn_name = "run_pipeline_scaled" if (auto_scale or subset > 100) else "run_pipeline"
+    print(f"profile={prof} fn={fn_name} subset={subset} max_steps={max_steps} "
+          f"resume={resume} data_factor={data_factor}")
+    fn = modal.Function.from_name("s3dgs-gsplat", fn_name)
+    result = fn.remote(subset, max_steps, resume, ckpt_every, data_factor)
     print("RESULT " + json.dumps(result, indent=2))
