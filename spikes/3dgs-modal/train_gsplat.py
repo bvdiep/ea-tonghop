@@ -168,6 +168,9 @@ def train(
     ckpt_every: int = 1000,
     resume: bool = True,
     keep_last_ckpts: int = 2,
+    refine_stop: "int | None" = None,
+    grow_grad2d: float = 0.0002,
+    grow_scale3d: float = 0.01,
 ):
     seed_all()
     device = torch.device("cuda")
@@ -275,11 +278,17 @@ def train(
 
     # DefaultStrategy = split/duplicate theo gradient (3DGS goc). Day la co che
     # densify THAT SU: MCMC chi teleport gaussian chet nen so luong dung yen.
-    refine_stop = min(int(max_steps * 0.5), 15_000)
+    #
+    # TNG-005: refine_stop va densify budget duoc tham so hoa de do diem bao hoa
+    # va chinh cho anh drone (do phan giai cao -> gaussian nho hon -> co the can
+    # grow_grad2d thap hon).
+    if refine_stop is None:
+        refine_stop = min(int(max_steps * 0.5), 15_000)
+    refine_stop = int(min(max(refine_stop, 1), max_steps))
     strategy = DefaultStrategy(
         prune_opa=0.005,
-        grow_grad2d=0.0002,
-        grow_scale3d=0.01,
+        grow_grad2d=grow_grad2d,
+        grow_scale3d=grow_scale3d,
         grow_scale2d=0.05,
         prune_scale3d=0.1,
         refine_start_iter=500,
@@ -291,6 +300,7 @@ def train(
     strategy.check_sanity(params, opts)
     strategy_state = strategy.initialize_state(scene_scale=float(parser.scene_scale))
     log(f"strategy=DefaultStrategy refine_stop={refine_stop} "
+        f"grow_grad2d={grow_grad2d} grow_scale3d={grow_scale3d} "
         f"scene_scale={parser.scene_scale:.3f}")
 
     # ---- resume (TNG-002) -------------------------------------------------
@@ -446,6 +456,8 @@ def train(
         ply_path = out
         log(f"saved {out} ({params['means'].shape[0]} gaussians)")
 
+    # TNG-005: ghi cau hinh densify vao summary de bang PSNR theo steps co ngu canh
+    # (cung PSNR nhung refine_stop khac nhau la ket qua khac nhau).
     summary = {
         "train_time_s": round(train_time, 1),
         "wall_clock_s": round(time.time() - t0, 1),
@@ -455,6 +467,15 @@ def train(
         "psnr_log": psnr_log,
         "psnr_val_final": psnr_log[-1] if psnr_log else None,
         "ply": str(ply_path) if ply_path else None,
+        "config": {
+            "max_steps": max_steps,
+            "factor": factor,
+            "eval_every": eval_every,
+            "refine_stop": refine_stop,
+            "grow_grad2d": grow_grad2d,
+            "grow_scale3d": grow_scale3d,
+            "sh_degree": sh_degree,
+        },
     }
     print("RESULT " + json.dumps(summary, indent=2))
     (result_dir / "train_summary.json").write_text(json.dumps(summary, indent=2))
@@ -476,8 +497,16 @@ if __name__ == "__main__":
     p.add_argument("--no_resume", action="store_true",
                    help="tat resume, train lai tu dau")
     p.add_argument("--no_ply", action="store_true", help="khong xuat PLY")
+    p.add_argument("--refine_stop", type=int, default=None,
+                   help="step dung densify (mac dinh min(max_steps*0.5, 15000))")
+    p.add_argument("--grow_grad2d", type=float, default=0.0002,
+                   help="nguong gradient 2D de split/duplicate gaussian")
+    p.add_argument("--grow_scale3d", type=float, default=0.01,
+                   help="nguong scale 3D de split/duplicate gaussian")
     args = p.parse_args()
     train(args.data_dir, args.result_dir, args.max_steps, args.factor,
           args.eval_every, save_ply=not args.no_ply,
           ckpt_every=args.ckpt_every, resume=not args.no_resume,
-          keep_last_ckpts=args.keep_last_ckpts)
+          keep_last_ckpts=args.keep_last_ckpts,
+          refine_stop=args.refine_stop, grow_grad2d=args.grow_grad2d,
+          grow_scale3d=args.grow_scale3d)

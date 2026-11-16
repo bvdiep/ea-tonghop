@@ -18,5 +18,6 @@ openclaw/output_v10_html/
 
 # 3DGS output artifacts (PLY quá lớn cho GitHub, giữ ở volume Modal + shared/)
 *.ply
-spike-3dgs-modal/out*/
-spike-3dgs-modal/logs/
+spikes/3dgs-modal/out*/
+spikes/3dgs-modal/logs/
+.venv/

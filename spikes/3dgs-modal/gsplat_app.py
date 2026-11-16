@@ -205,7 +205,10 @@ def run_colmap(work: Path, subset: int) -> dict:
 
 
 def _pipeline_impl(subset: int, max_steps: int, resume: bool,
-                   ckpt_every: int, data_factor: int) -> dict:
+                   ckpt_every: int, data_factor: int,
+                   refine_stop: "int | None" = None,
+                   grow_grad2d: float = 0.0002,
+                   grow_scale3d: float = 0.01) -> dict:
     t_all = time.time()
     work = Path("/tmp/work")
     if work.exists():
@@ -238,7 +241,15 @@ def _pipeline_impl(subset: int, max_steps: int, resume: bool,
     # checkpoint + metrics.json + train.log deu mat khi container restart.
     # KHONG dua max_steps vao ten thu muc: neu co, lan chay 1000 steps va 2000 steps
     # ghi vao 2 thu muc khac nhau -> resume khong bao gio tim thay ckpt cu.
-    result_dir = Path("/vol") / f"gsplat_s{subset}_f{data_factor}"
+    # TNG-005: densify config khac nhau cung la scene khac nhau (refine_stop doi
+    # thi so gaussian va chat luong doi) nen phai tach thu muc, neu khong resume
+    # se load ckpt cua cau hinh khac.
+    tag = ""
+    if refine_stop is not None:
+        tag += f"_rs{refine_stop}"
+    if grow_grad2d != 0.0002:
+        tag += f"_gg{grow_grad2d}"
+    result_dir = Path("/vol") / f"gsplat_s{subset}_f{data_factor}{tag}"
     result_dir.mkdir(parents=True, exist_ok=True)
 
     t0 = time.time()
@@ -264,7 +275,11 @@ def _pipeline_impl(subset: int, max_steps: int, resume: bool,
         "--max_steps", str(max_steps),
         "--factor", str(data_factor),
         "--ckpt_every", str(ckpt_every),
+        "--grow_grad2d", str(grow_grad2d),
+        "--grow_scale3d", str(grow_scale3d),
     ]
+    if refine_stop is not None:
+        cmd += ["--refine_stop", str(refine_stop)]
     if not resume:
         cmd.append("--no_resume")
     t0 = time.time()
@@ -355,9 +370,13 @@ def pick_profile(subset: int) -> dict:
 @app.function(image=image, gpu="T4", cpu=2, memory=8192, timeout=6 * 3600,
               volumes={"/vol": volume})
 def run_pipeline(subset: int = 20, max_steps: int = 3000, resume: bool = True,
-                 ckpt_every: int = 1000, data_factor: int = 1) -> dict:
+                 ckpt_every: int = 1000, data_factor: int = 1,
+                 refine_stop: "int | None" = None,
+                 grow_grad2d: float = 0.0002,
+                 grow_scale3d: float = 0.01) -> dict:
     """COLMAP (co cache) + gsplat train (co checkpoint/resume). Profile nho."""
-    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor)
+    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor,
+                          refine_stop, grow_grad2d, grow_scale3d)
 
 
 @app.function(image=image, gpu="T4", cpu=2, memory=8192, timeout=3600,
@@ -425,22 +444,31 @@ def dbg_coords():
               volumes={"/vol": volume})
 def run_pipeline_scaled(subset: int = 500, max_steps: int = 30000,
                         resume: bool = True, ckpt_every: int = 1000,
-                        data_factor: int = 2) -> dict:
+                        data_factor: int = 2,
+                        refine_stop: "int | None" = None,
+                        grow_grad2d: float = 0.0002,
+                        grow_scale3d: float = 0.01) -> dict:
     """Wrapper cho du lieu vua/lon: tai nguyen theo profile, timeout ngan hon.
 
     Timeout ngan (4h) co chu dich: function cang dai cang de bi preempt giua chung.
     Orchestrator goi lai nhieu lan; moi lan resume tu checkpoint (TNG-002).
     """
-    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor)
+    return _pipeline_impl(subset, max_steps, resume, ckpt_every, data_factor,
+                          refine_stop, grow_grad2d, grow_scale3d)
 
 
 @app.local_entrypoint()
 def main(subset: int = 20, max_steps: int = 3000, resume: bool = True,
-         ckpt_every: int = 1000, data_factor: int = 1, auto_scale: bool = False):
+         ckpt_every: int = 1000, data_factor: int = 1, auto_scale: bool = False,
+         refine_stop: int = 0, grow_grad2d: float = 0.0002,
+         grow_scale3d: float = 0.01):
     prof = pick_profile(subset)
     fn_name = "run_pipeline_scaled" if (auto_scale or subset > 100) else "run_pipeline"
+    rs = refine_stop if refine_stop > 0 else None
     print(f"profile={prof} fn={fn_name} subset={subset} max_steps={max_steps} "
-          f"resume={resume} data_factor={data_factor}")
+          f"resume={resume} data_factor={data_factor} refine_stop={rs} "
+          f"grow_grad2d={grow_grad2d} grow_scale3d={grow_scale3d}")
     fn = modal.Function.from_name("s3dgs-gsplat", fn_name)
-    result = fn.remote(subset, max_steps, resume, ckpt_every, data_factor)
+    result = fn.remote(subset, max_steps, resume, ckpt_every, data_factor,
+                       rs, grow_grad2d, grow_scale3d)
     print("RESULT " + json.dumps(result, indent=2))
